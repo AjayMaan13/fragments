@@ -4,7 +4,8 @@
   "version": "0.0.1",
   "description": "Fragments back-end API",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint \"./src/**/*.js\""
   },
   "repository": {
     "type": "git",
@@ -13,6 +14,9 @@
   "author": "Ajaypartap Singh Maan",
   "license": "UNLICENSED",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.3.0",
+    "globals": "^17.6.0",
     "prettier": "3.8.3"
   }
 }
