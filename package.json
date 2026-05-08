@@ -11,5 +11,8 @@
     "url": "git+https://github.com/ajaymaan13/fragments.git"
   },
   "author": "Ajaypartap Singh Maan",
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "prettier": "3.8.3"
+  }
 }
