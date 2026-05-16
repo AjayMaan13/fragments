@@ -6,9 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint \"./src/**/*.js\"",
-    "start": "node src/server.js",
-    "dev": "node --env-file=.env.debug --watch ./src/server.js",
-    "debug": "node --env-file=.env.debug --inspect=0.0.0.0:9229 --watch ./src/server.js"
+    "start": "node src/index.js",
+    "dev": "node --env-file=.env.debug --watch ./src/index.js",
+    "debug": "node --env-file=.env.debug --inspect=0.0.0.0:9229 --watch ./src/index.js"
   },
   "repository": {
     "type": "git",
@@ -23,10 +23,13 @@
     "prettier": "3.8.3"
   },
   "dependencies": {
+    "aws-jwt-verify": "^5.1.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
+    "passport": "^0.7.0",
+    "passport-http-bearer": "^1.0.1",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "pino-pretty": "^13.1.3",
