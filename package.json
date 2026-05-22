@@ -4,11 +4,13 @@
   "version": "0.0.1",
   "description": "Fragments back-end API",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "eslint \"./src/**/*.js\"",
+    "test:watch": "jest -c jest.config.js --runInBand --watch --",
+    "test": "jest -c jest.config.js --runInBand --",
+    "coverage": "jest -c jest.config.js --runInBand --coverage",
+    "lint": "eslint \"./src/**/*.js\" \"tests/**/*.js\"",
     "start": "node src/index.js",
-    "dev": "node --env-file=.env.debug --watch ./src/index.js",
-    "debug": "node --env-file=.env.debug --inspect=0.0.0.0:9229 --watch ./src/index.js"
+    "dev": "FRAGMENTS_LOG_LEVEL=debug nodemon ./src/index.js --watch src",
+    "debug": "FRAGMENTS_LOG_LEVEL=debug nodemon --inspect=0.0.0.0:9229 ./src/index.js --watch src"
   },
   "repository": {
     "type": "git",
