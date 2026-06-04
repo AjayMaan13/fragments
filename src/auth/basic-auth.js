@@ -4,7 +4,6 @@
 // https://github.com/http-auth/http-auth-passport
 
 const auth = require('http-auth');
-const passport = require('passport');
 const authPassport = require('http-auth-passport');
 const logger = require('../logger');
 const authorize = require('./auth-middleware');
