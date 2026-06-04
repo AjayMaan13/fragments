@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "aws-jwt-verify": "^5.1.1",
+    "content-type": "^2.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
