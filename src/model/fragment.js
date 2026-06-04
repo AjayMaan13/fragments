@@ -14,9 +14,24 @@ const {
   deleteFragment,
 } = require('./data');
 
+// The only types we support right now (Assignment 1 = text/plain only required)
+const validTypes = ['text/plain'];
+
 class Fragment {
   constructor({ id, ownerId, created, updated, type, size = 0 }) {
     // TODO
+    if (!ownerId) throw new Error('ownerId is required');
+    if (!type) throw new Error('type is required');
+    if (!Fragment.isSupportedType(type)) throw new Error(`unsupported type: ${type}`);
+    if (typeof size !== 'number') throw new Error('size must be a number');
+    if (size < 0) throw new Error('size cannot be negative');
+
+    this.id = id || randomUUID();
+    this.ownerId = ownerId;
+    this.created = created || new Date().toISOString();
+    this.updated = updated || new Date().toISOString();
+    this.type = type;
+    this.size = size;
   }
 
   /**
@@ -27,6 +42,12 @@ class Fragment {
    */
   static async byUser(ownerId, expand = false) {
     // TODO
+    const fragments = await listFragments(ownerId, expand);
+    if (expand) {
+      // listFragments returns plain objects (deserialized JSON); re-create Fragment instances
+      return fragments.map((f) => new Fragment(typeof f === 'string' ? JSON.parse(f) : f));
+    }
+    return fragments;
   }
 
   /**
@@ -38,6 +59,10 @@ class Fragment {
   static async byId(ownerId, id) {
     // TODO
     // TIP: make sure you properly re-create a full Fragment instance after getting from db.
+    const data = await readFragment(ownerId, id);
+    if (!data) throw new Error(`fragment not found: ${id}`);
+    // Re-create a real Fragment instance (readFragment returns a plain object)
+    return new Fragment(data);
   }
 
   /**
@@ -48,6 +73,7 @@ class Fragment {
    */
   static delete(ownerId, id) {
     // TODO
+    return deleteFragment(ownerId, id);
   }
 
   /**
@@ -56,6 +82,8 @@ class Fragment {
    */
   save() {
     // TODO
+    this.updated = new Date().toISOString();
+    return writeFragment(this);
   }
 
   /**
@@ -64,6 +92,7 @@ class Fragment {
    */
   getData() {
     // TODO
+    return readFragmentData(this.ownerId, this.id);
   }
 
   /**
@@ -74,6 +103,11 @@ class Fragment {
   async setData(data) {
     // TODO
     // TIP: make sure you update the metadata whenever you change the data, so they match
+    if (!Buffer.isBuffer(data)) throw new Error('data must be a Buffer');
+    this.size = Buffer.byteLength(data);
+    this.updated = new Date().toISOString();
+    await writeFragment(this); // keep metadata (size/updated) in sync
+    return writeFragmentData(this.ownerId, this.id, data);
   }
 
   /**
@@ -92,6 +126,7 @@ class Fragment {
    */
   get isText() {
     // TODO
+    return this.mimeType.startsWith('text/');
   }
 
   /**
@@ -100,6 +135,8 @@ class Fragment {
    */
   get formats() {
     // TODO
+    // Assignment 1: text/plain only converts to text/plain
+    return ['text/plain'];
   }
 
   /**
@@ -109,6 +146,12 @@ class Fragment {
    */
   static isSupportedType(value) {
     // TODO
+    try {
+      const { type } = contentType.parse(value);
+      return validTypes.includes(type);
+    } catch {
+      return false;
+    }
   }
 }
 
