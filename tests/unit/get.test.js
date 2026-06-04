@@ -1,7 +1,6 @@
 // tests/unit/get.test.js
 
 const request = require('supertest');
-
 const app = require('../../src/app');
 
 describe('GET /v1/fragments', () => {
@@ -22,5 +21,37 @@ describe('GET /v1/fragments', () => {
     expect(Array.isArray(res.body.fragments)).toBe(true);
   });
 
-  // TODO: we'll need to add tests to check the contents of the fragments array later
+  // After creating a fragment, its id appears in the list
+  test('created fragment id appears in the list', async () => {
+    const post = await request(app)
+      .post('/v1/fragments')
+      .auth('test-user1@fragments-testing.com', 'test-password1')
+      .set('Content-Type', 'text/plain')
+      .send('hello');
+
+    const get = await request(app)
+      .get('/v1/fragments')
+      .auth('test-user1@fragments-testing.com', 'test-password1');
+
+    expect(get.body.fragments).toContain(post.body.fragment.id);
+  });
+
+  // expand=1 returns full fragment objects instead of just ids
+  test('expand=1 returns full fragment objects', async () => {
+    await request(app)
+      .post('/v1/fragments')
+      .auth('test-user1@fragments-testing.com', 'test-password1')
+      .set('Content-Type', 'text/plain')
+      .send('hello expanded');
+
+    const res = await request(app)
+      .get('/v1/fragments?expand=1')
+      .auth('test-user1@fragments-testing.com', 'test-password1');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.fragments[0]).toHaveProperty('id');
+    expect(res.body.fragments[0]).toHaveProperty('ownerId');
+    expect(res.body.fragments[0]).toHaveProperty('type');
+    expect(res.body.fragments[0]).toHaveProperty('size');
+  });
 });
