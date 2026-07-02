@@ -5,3 +5,4 @@ node_modules/
 
 # Generated test coverage reports
 coverage/
+ccp555-key-pair.pem
