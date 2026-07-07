@@ -14,8 +14,9 @@ const {
   deleteFragment,
 } = require('./data');
 
-// The only types we support right now (Assignment 1 = text/plain only required)
-const validTypes = ['text/plain'];
+// Assignment 2: support any text/* subtype we know how to convert, plus JSON.
+// Images and other conversions arrive in Assignment 3.
+const supportedTypes = ['text/plain', 'text/markdown', 'text/html', 'text/csv', 'application/json'];
 
 class Fragment {
   constructor({ id, ownerId, created, updated, type, size = 0 }) {
@@ -124,7 +125,14 @@ class Fragment {
    * @returns {Array<string>} list of supported mime types
    */
   get formats() {
-    return ['text/plain'];
+    const conversionMap = {
+      'text/plain': ['text/plain'],
+      'text/markdown': ['text/markdown', 'text/html', 'text/plain'],
+      'text/html': ['text/html', 'text/plain'],
+      'text/csv': ['text/csv', 'text/plain'],
+      'application/json': ['application/json', 'text/plain'],
+    };
+    return conversionMap[this.mimeType] || [this.mimeType];
   }
 
   /**
@@ -135,7 +143,7 @@ class Fragment {
   static isSupportedType(value) {
     try {
       const { type } = contentType.parse(value);
-      return validTypes.includes(type);
+      return supportedTypes.includes(type);
     } catch {
       return false;
     }
