@@ -10,7 +10,8 @@
     "lint": "eslint \"./src/**/*.js\" \"tests/**/*.js\"",
     "start": "node src/index.js",
     "dev": "FRAGMENTS_LOG_LEVEL=debug nodemon ./src/index.js --watch src",
-    "debug": "FRAGMENTS_LOG_LEVEL=debug nodemon --inspect=0.0.0.0:9229 ./src/index.js --watch src"
+    "debug": "FRAGMENTS_LOG_LEVEL=debug nodemon --inspect=0.0.0.0:9229 ./src/index.js --watch src",
+    "test:integration": "hurl --test --glob \"tests/integration/**/*.hurl\""
   },
   "repository": {
     "type": "git",
@@ -20,6 +21,7 @@
   "license": "UNLICENSED",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@orangeopensource/hurl": "^8.0.2",
     "eslint": "^10.3.0",
     "globals": "^17.6.0",
     "jest": "^30.4.2",
