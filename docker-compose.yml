@@ -12,6 +12,10 @@ services:
     environment:
       # Our API will be running on http://localhost:8080
       - API_URL=http://localhost:8080
+      # The image bakes in NODE_ENV=production, but Basic Auth (HTPASSWD_FILE)
+      # is only allowed when NODE_ENV isn't 'production' (see src/auth/index.js).
+      # Override it here since this compose setup is for local/testing use.
+      - NODE_ENV=development
       # Use Basic Auth (for running tests, CI)
       - HTPASSWD_FILE=tests/.htpasswd
       # Use the FRAGMENTS_LOG_LEVEL set in the host environment, or default to info
