@@ -36,7 +36,7 @@ GET {{url}}
 test-user1@fragments-testing.com:test-password1
 
 HTTP/1.1 200
-Content-Type: text/plain; charset=utf-8
+Content-Type: text/plain
 Content-Length: 19
 [Asserts]
 body == "This is a fragment!"

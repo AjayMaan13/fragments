@@ -19,6 +19,6 @@ GET {{url}}
 test-user1@fragments-testing.com:test-password1
 
 HTTP/1.1 200
-Content-Type: application/json; charset=utf-8
+Content-Type: application/json
 [Asserts]
 jsonpath "$.hello" == "world"
