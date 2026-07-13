@@ -21,6 +21,11 @@ services:
       # Use the FRAGMENTS_LOG_LEVEL set in the host environment, or default to info
       - FRAGMENTS_LOG_LEVEL=${FRAGMENTS_LOG_LEVEL:-info}
       - AWS_REGION=us-east-1
+      # Dummy credentials so the AWS SDK has something to use when talking to
+      # MiniStack (MiniStack doesn't validate them, but the SDK still needs
+      # some credentials present to proceed at all).
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
       # Use the MiniStack endpoint vs. AWS for S3 AWS SDK clients.
       # NOTE: we use Docker's internal network to the ministack container
       - AWS_S3_ENDPOINT_URL=http://ministack:4566
