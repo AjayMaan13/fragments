@@ -14,6 +14,8 @@ const {
   deleteFragment,
 } = require('./data');
 
+const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'];
+
 const supportedTypes = [
   'text/plain',
   'text/markdown',
@@ -21,11 +23,7 @@ const supportedTypes = [
   'text/csv',
   'application/json',
   'application/yaml',
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/avif',
-  'image/gif',
+  ...imageTypes,
 ];
 
 class Fragment {
@@ -139,16 +137,14 @@ class Fragment {
       'text/plain': ['text/plain'],
       'text/markdown': ['text/markdown', 'text/html', 'text/plain'],
       'text/html': ['text/html', 'text/plain'],
-      'text/csv': ['text/csv', 'text/plain'],
-      'application/json': ['application/json', 'text/plain'],
-      // Full image<->image and text<->yaml conversion matrix arrives in Phase 3;
-      // for now each of these types can only be served back as itself.
-      'application/yaml': ['application/yaml'],
-      'image/png': ['image/png'],
-      'image/jpeg': ['image/jpeg'],
-      'image/webp': ['image/webp'],
-      'image/avif': ['image/avif'],
-      'image/gif': ['image/gif'],
+      'text/csv': ['text/csv', 'text/plain', 'application/json'],
+      'application/json': ['application/json', 'application/yaml', 'text/plain'],
+      'application/yaml': ['application/yaml', 'text/plain'],
+      'image/png': imageTypes,
+      'image/jpeg': imageTypes,
+      'image/webp': imageTypes,
+      'image/avif': imageTypes,
+      'image/gif': imageTypes,
     };
     return conversionMap[this.mimeType] || [this.mimeType];
   }
