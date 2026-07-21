@@ -12,8 +12,8 @@ export AWS_ACCESS_KEY_ID=test
 echo "AWS_SECRET_ACCESS_KEY=test"
 export AWS_SECRET_ACCESS_KEY=test
 
-export AWS_DEFAULT_REGION=us-east-1
-echo "AWS_DEFAULT_REGION=us-east-1"
+export AWS_DEFAULT_REGION=us-east-2
+echo "AWS_DEFAULT_REGION=us-east-2"
 
 # Wait for MiniStack to be ready, by inspecting the response from healthcheck
 echo 'Waiting for MiniStack S3...'
