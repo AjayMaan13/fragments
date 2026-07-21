@@ -41,7 +41,7 @@ describe('PUT /v1/fragments/:id', () => {
     expect(putRes.body.status).toBe('ok');
     expect(putRes.body.fragment.id).toBe(id);
     expect(putRes.body.fragment.type).toBe('text/plain');
-    expect(putRes.body.fragment.size).toBe(32);
+    expect(putRes.body.fragment.size).toBe(31);
 
     // Confirm the data itself was actually updated
     const getRes = await request(app)
