@@ -17,15 +17,12 @@ module.exports = async (req, res) => {
     return res.status(404).json(createErrorResponse(404, 'Fragment not found'));
   }
 
-  let type;
-  try {
-    ({ type } = contentType.parse(req.get('Content-Type') || ''));
-  } catch {
-    logger.warn({ id }, 'Missing or invalid Content-Type header');
-    return res
-      .status(400)
-      .json(createErrorResponse(400, 'Missing or invalid Content-Type header'));
+  const rawContentType = req.get('Content-Type');
+  if (!rawContentType) {
+    logger.warn({ id }, 'Missing Content-Type header');
+    return res.status(400).json(createErrorResponse(400, 'Missing Content-Type header'));
   }
+  const { type } = contentType.parse(rawContentType);
 
   if (type !== fragment.mimeType) {
     logger.warn(
