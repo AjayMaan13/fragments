@@ -4,7 +4,7 @@ A cloud-native microservice for storing, converting, and serving small pieces of
 
 Built as a full CI/CD-driven production system: every push runs a full test suite; every tagged release automatically builds a Docker image, pushes it to a container registry, and rolls it out to a live AWS deployment with zero manual intervention.
 
-**Live API:** `http://fragments-lb-1603159740.us-east-2.elb.amazonaws.com`
+**Live API:** `https://fragments.asmaan4.mystudentproject.ca` (custom domain + TLS) — also reachable at the raw load-balancer URL `http://fragments-lb-1603159740.us-east-2.elb.amazonaws.com`
 **Companion UI:** [fragments-ui](https://github.com/AjayMaan13/fragments-ui)
 
 ---
@@ -70,7 +70,7 @@ flowchart LR
 | **IAM** | Task role + execution role scoping what the running container can access |
 | **CloudWatch Logs** | Centralized structured logging (Pino JSON logs) for every request, shipped from each container |
 | **VPC** | Default VPC with public subnets across 2 Availability Zones for fault tolerance |
-| **Certificate Manager (ACM)** *(bonus)* | Imported Let's Encrypt cert for a custom HTTPS domain on the ALB |
+| **Certificate Manager (ACM)** | Imported Let's Encrypt certificate serving the custom HTTPS domain via an ALB HTTPS:443 listener, with HTTP→HTTPS 301 redirect |
 
 ## Tech stack
 
@@ -90,6 +90,7 @@ flowchart LR
 - **Zero-downtime rolling deployments** — pushing a git tag triggers an automated pipeline that builds, tests, and deploys a new ECS task revision while the old one keeps serving traffic until the new one is healthy
 - **Environment-driven configuration** — the identical codebase runs against an in-memory store locally and real AWS infrastructure in production, switched purely by which environment variables are present, with zero conditional deploy-target code
 - **Content-negotiated conversions** — a single stored fragment can be requested back in any compatible format via a URL extension (e.g. `.html`, `.yaml`, `.jpg`), computed on-the-fly rather than stored redundantly
+- **Custom domain over TLS** — served at a Seneca `mystudentproject.ca` subdomain via a Let's Encrypt certificate in ACM, an ALB HTTPS listener, and an automatic HTTP→HTTPS 301 redirect
 
 ## API overview
 
