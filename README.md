@@ -30,8 +30,13 @@ flowchart LR
         Cognito[Amazon Cognito<br/>User Pool + Hosted UI]
     end
 
+    subgraph Edge["DNS + TLS"]
+        DNS[Custom domain<br/>fragments.*.mystudentproject.ca]
+        ACM[ACM certificate<br/>Let's Encrypt]
+    end
+
     subgraph AWS["AWS — us-east-2"]
-        ALB[Application Load Balancer]
+        ALB[Application Load Balancer<br/>HTTPS:443 + HTTP→HTTPS redirect]
         subgraph ECS["ECS Fargate Service"]
             Task1[fragments task]
         end
@@ -47,14 +52,16 @@ flowchart LR
     end
 
     UI -- OAuth login --> Cognito
-    UI -- Bearer token --> ALB
+    UI -- Bearer token over HTTPS --> DNS
+    DNS --> ALB
+    ACM -. terminates TLS .-> ALB
     ALB --> Task1
     Task1 --> S3
     Task1 --> Dynamo
     Task1 --> CW
     CD -- git tag push --> ECR
-    ECR --> Task1
-    CD -- deploys --> ECS
+    ECR -- image pulled by --> Task1
+    CD -- deploys task def --> Task1
 ```
 
 ## AWS services used
