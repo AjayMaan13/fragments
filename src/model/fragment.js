@@ -14,9 +14,17 @@ const {
   deleteFragment,
 } = require('./data');
 
-// Assignment 2: support any text/* subtype we know how to convert, plus JSON.
-// Images and other conversions arrive in Assignment 3.
-const supportedTypes = ['text/plain', 'text/markdown', 'text/html', 'text/csv', 'application/json'];
+const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'];
+
+const supportedTypes = [
+  'text/plain',
+  'text/markdown',
+  'text/html',
+  'text/csv',
+  'application/json',
+  'application/yaml',
+  ...imageTypes,
+];
 
 class Fragment {
   constructor({ id, ownerId, created, updated, type, size = 0 }) {
@@ -129,8 +137,14 @@ class Fragment {
       'text/plain': ['text/plain'],
       'text/markdown': ['text/markdown', 'text/html', 'text/plain'],
       'text/html': ['text/html', 'text/plain'],
-      'text/csv': ['text/csv', 'text/plain'],
-      'application/json': ['application/json', 'text/plain'],
+      'text/csv': ['text/csv', 'text/plain', 'application/json'],
+      'application/json': ['application/json', 'application/yaml', 'text/plain'],
+      'application/yaml': ['application/yaml', 'text/plain'],
+      'image/png': imageTypes,
+      'image/jpeg': imageTypes,
+      'image/webp': imageTypes,
+      'image/avif': imageTypes,
+      'image/gif': imageTypes,
     };
     return conversionMap[this.mimeType] || [this.mimeType];
   }

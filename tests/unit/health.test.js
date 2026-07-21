@@ -1,6 +1,7 @@
 // tests/unit/health.test.js
 
 const request = require('supertest');
+const { hostname } = require('os');
 
 // Get our Express app object (we don't need the server part)
 const app = require('../../src/app');
@@ -29,5 +30,10 @@ describe('/ health check', () => {
     expect(res.body.author).toEqual(author);
     expect(res.body.githubUrl.startsWith('https://github.com/')).toBe(true);
     expect(res.body.version).toEqual(version);
+  });
+
+  test('should return the server hostname in response', async () => {
+    const res = await request(app).get('/');
+    expect(res.body.hostname).toEqual(hostname());
   });
 });

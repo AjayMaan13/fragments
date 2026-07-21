@@ -168,6 +168,40 @@ describe('Fragment class', () => {
       });
       expect(fragment.formats).toEqual(['text/plain']);
     });
+
+    test('formats returns the expected result for markdown', () => {
+      const fragment = new Fragment({ ownerId: '1234', type: 'text/markdown', size: 0 });
+      expect(fragment.formats).toEqual(['text/markdown', 'text/html', 'text/plain']);
+    });
+
+    test('formats returns the expected result for csv', () => {
+      const fragment = new Fragment({ ownerId: '1234', type: 'text/csv', size: 0 });
+      expect(fragment.formats).toEqual(['text/csv', 'text/plain', 'application/json']);
+    });
+
+    test('formats returns the expected result for json', () => {
+      const fragment = new Fragment({ ownerId: '1234', type: 'application/json', size: 0 });
+      expect(fragment.formats).toEqual(['application/json', 'application/yaml', 'text/plain']);
+    });
+
+    test('formats returns the expected result for yaml', () => {
+      const fragment = new Fragment({ ownerId: '1234', type: 'application/yaml', size: 0 });
+      expect(fragment.formats).toEqual(['application/yaml', 'text/plain']);
+    });
+
+    test.each(['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'])(
+      'formats returns all image types for %s',
+      (type) => {
+        const fragment = new Fragment({ ownerId: '1234', type, size: 0 });
+        expect(fragment.formats).toEqual([
+          'image/png',
+          'image/jpeg',
+          'image/webp',
+          'image/avif',
+          'image/gif',
+        ]);
+      }
+    );
   });
 
   describe('save(), getData(), setData(), byId(), byUser(), delete()', () => {

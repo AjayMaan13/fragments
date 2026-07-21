@@ -20,7 +20,7 @@ services:
       - HTPASSWD_FILE=tests/.htpasswd
       # Use the FRAGMENTS_LOG_LEVEL set in the host environment, or default to info
       - FRAGMENTS_LOG_LEVEL=${FRAGMENTS_LOG_LEVEL:-info}
-      - AWS_REGION=us-east-1
+      - AWS_REGION=us-east-2
       # Dummy credentials so the AWS SDK has something to use when talking to
       # MiniStack (MiniStack doesn't validate them, but the SDK still needs
       # some credentials present to proceed at all).
@@ -60,5 +60,5 @@ services:
       # See https://ministack.org/docs/configuration for config details.
       # We only want to run S3
       - SERVICES=s3
-      # We will use us-east-1
-      - MINISTACK_REGION=us-east-1
+      # We will use us-east-2
+      - MINISTACK_REGION=us-east-2
