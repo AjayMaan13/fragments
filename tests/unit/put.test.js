@@ -87,6 +87,30 @@ describe('PUT /v1/fragments/:id', () => {
     expect(putRes.body.status).toBe('error');
   });
 
+  test('a missing Content-Type header on update returns 400', async () => {
+    const postRes = await request(app)
+      .post('/v1/fragments')
+      .auth('test-user1@fragments-testing.com', 'test-password1')
+      .set('Content-Type', 'text/plain')
+      .send('This is a fragment');
+
+    const { id } = postRes.body.fragment;
+
+    // supertest's .send() always infers a default Content-Type header when one
+    // isn't set, so we bypass it with the raw .write()/.end() stream API to
+    // genuinely omit the header, matching what a real HTTP client can send.
+    const putReq = request(app)
+      .put(`/v1/fragments/${id}`)
+      .auth('test-user1@fragments-testing.com', 'test-password1');
+    putReq.write('nope');
+    const putRes = await new Promise((resolve, reject) => {
+      putReq.end((err, res) => (err ? reject(err) : resolve(res)));
+    });
+
+    expect(putRes.statusCode).toBe(400);
+    expect(putRes.body.error.message).toBe('Missing Content-Type header');
+  });
+
   test('an unsupported Content-Type on update returns 400', async () => {
     const postRes = await request(app)
       .post('/v1/fragments')
