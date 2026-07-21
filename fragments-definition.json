@@ -1,0 +1,88 @@
+{
+  "containerDefinitions": [
+    {
+      "name": "fragments-container",
+      "image": "550430683126.dkr.ecr.us-east-2.amazonaws.com/fragments:latest",
+      "cpu": 0,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "hostPort": 80,
+          "protocol": "tcp",
+          "name": "fragments-container-80-tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        {
+          "name": "AWS_COGNITO_POOL_ID",
+          "value": "us-east-2_cSRxETOv0"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-2"
+        },
+        {
+          "name": "FRAGMENTS_LOG_LEVEL",
+          "value": "info"
+        },
+        {
+          "name": "API_URL",
+          "value": "http://fragments-lb-1603159740.us-east-2.elb.amazonaws.com"
+        },
+        {
+          "name": "PORT",
+          "value": "80"
+        },
+        {
+          "name": "AWS_DYNAMODB_TABLE_NAME",
+          "value": "fragments"
+        },
+        {
+          "name": "AWS_S3_BUCKET_NAME",
+          "value": "ajaymaan13-fragments-2"
+        },
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        },
+        {
+          "name": "AWS_COGNITO_CLIENT_ID",
+          "value": "4ui31v9j1n7h8eabr5pkt9ltl2"
+        }
+      ],
+      "environmentFiles": [],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "ulimits": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/fragments-task",
+          "awslogs-create-group": "true",
+          "awslogs-region": "us-east-2",
+          "awslogs-stream-prefix": "ecs"
+        },
+        "secretOptions": []
+      },
+      "systemControls": []
+    }
+  ],
+  "family": "fragments-task",
+  "taskRoleArn": "arn:aws:iam::550430683126:role/LabRole",
+  "executionRoleArn": "arn:aws:iam::550430683126:role/LabRole",
+  "networkMode": "awsvpc",
+  "volumes": [],
+  "placementConstraints": [],
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "enableFaultInjection": false
+}
