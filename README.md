@@ -4,6 +4,7 @@ A cloud-native microservice for storing, converting, and serving small pieces of
 
 Built as a full CI/CD-driven production system: every push runs a full test suite; every tagged release automatically builds a Docker image, pushes it to a container registry, and rolls it out to a live AWS deployment with zero manual intervention.
 
+**Demo video:** https://youtu.be/YJZaokns0F0
 **Live API:** `https://fragments.asmaan4.mystudentproject.ca` (custom domain + TLS) — also reachable at the raw load-balancer URL `http://fragments-lb-1603159740.us-east-2.elb.amazonaws.com`
 **Companion UI:** [fragments-ui](https://github.com/AjayMaan13/fragments-ui)
 
