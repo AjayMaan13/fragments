@@ -23,10 +23,42 @@ resource "aws_iam_role_policy_attachment" "execution_role_policy" {
 }
 
 # What your running application is allowed to touch (S3 bucket, DynamoDB
-# table). Left with no permissions attached here on purpose — Phase 2 adds
-# an aws_iam_role_policy scoped to the exact bucket/table ARNs once those
-# resources exist.
+# table).
 resource "aws_iam_role" "task_role" {
   name               = "${var.project_name}-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
+}
+
+# Least privilege: only the operations the app performs, only on our bucket/table.
+data "aws_iam_policy_document" "task_data_access" {
+  statement {
+    sid       = "FragmentObjects"
+    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    resources = ["${var.bucket_arn}/*"]
+  }
+
+  # Without ListBucket, S3 answers a read of a missing key with 403 instead of 404.
+  statement {
+    sid       = "FragmentBucketList"
+    actions   = ["s3:ListBucket"]
+    resources = [var.bucket_arn]
+  }
+
+  statement {
+    sid = "FragmentMetadataTable"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:Query",
+    ]
+    resources = [var.table_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "task_data_access" {
+  name   = "${var.project_name}-task-data-access"
+  role   = aws_iam_role.task_role.id
+  policy = data.aws_iam_policy_document.task_data_access.json
 }
