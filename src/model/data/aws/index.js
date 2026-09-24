@@ -4,7 +4,13 @@ const logger = require('../../../logger');
 const s3Client = require('./s3Client');
 const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const ddbDocClient = require('./ddbDocClient');
-const { PutCommand, GetCommand, QueryCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
+const {
+  PutCommand,
+  GetCommand,
+  QueryCommand,
+  DeleteCommand,
+  UpdateCommand,
+} = require('@aws-sdk/lib-dynamodb');
 
 // Writes a fragment to DynamoDB. Returns a Promise.
 function writeFragment(fragment) {
@@ -204,6 +210,30 @@ function deleteFragment(ownerId, id) {
   ]);
 }
 
+// Atomically adds one to a fragment's `viewCount` in DynamoDB. ADD is done by
+// the database itself, so concurrent requests can't overwrite each other's
+// increments. The condition stops it from creating an item for an unknown id.
+// Returns a Promise<number> with the new count.
+async function incrementViews(ownerId, id) {
+  const params = {
+    TableName: process.env.AWS_DYNAMODB_TABLE_NAME,
+    Key: { ownerId, id },
+    UpdateExpression: 'ADD viewCount :one',
+    ConditionExpression: 'attribute_exists(id)',
+    ExpressionAttributeValues: { ':one': 1 },
+    ReturnValues: 'UPDATED_NEW',
+  };
+
+  try {
+    const data = await ddbDocClient.send(new UpdateCommand(params));
+    return data.Attributes.viewCount;
+  } catch (err) {
+    logger.warn({ err, params }, 'error incrementing fragment views in DynamoDB');
+    throw err;
+  }
+}
+
+module.exports.incrementViews = incrementViews;
 module.exports.listFragments = listFragments;
 module.exports.writeFragment = writeFragment;
 module.exports.readFragment = readFragment;

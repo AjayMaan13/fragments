@@ -12,6 +12,7 @@ const {
   writeFragmentData,
   listFragments,
   deleteFragment,
+  incrementViews,
 } = require('./data');
 
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'];
@@ -27,12 +28,15 @@ const supportedTypes = [
 ];
 
 class Fragment {
-  constructor({ id, ownerId, created, updated, type, size = 0 }) {
+  constructor({ id, ownerId, created, updated, type, size = 0, expiresAt, viewCount = 0 }) {
     if (!ownerId) throw new Error('ownerId is required');
     if (!type) throw new Error('type is required');
     if (!Fragment.isSupportedType(type)) throw new Error(`unsupported type: ${type}`);
     if (typeof size !== 'number') throw new Error('size must be a number');
     if (size < 0) throw new Error('size cannot be negative');
+    if (expiresAt !== undefined && !Number.isInteger(expiresAt)) {
+      throw new Error('expiresAt must be an integer (Unix time in seconds)');
+    }
 
     this.id = id || randomUUID();
     this.ownerId = ownerId;
@@ -40,6 +44,19 @@ class Fragment {
     this.updated = updated || new Date().toISOString();
     this.type = type;
     this.size = size;
+    this.viewCount = viewCount;
+    // Only set when the fragment expires: the DynamoDB client rejects
+    // `undefined` values, and items without this attribute never expire.
+    if (expiresAt !== undefined) this.expiresAt = expiresAt;
+  }
+
+  /**
+   * True once the fragment's expiry time (Unix seconds) has passed. DynamoDB's
+   * TTL cleanup can lag by up to a couple of days, so we check on read too.
+   * @returns {boolean}
+   */
+  get isExpired() {
+    return this.expiresAt !== undefined && this.expiresAt <= Math.floor(Date.now() / 1000);
   }
 
   /**
@@ -49,12 +66,13 @@ class Fragment {
    * @returns Promise<Array<Fragment>>
    */
   static async byUser(ownerId, expand = false) {
-    const fragments = await listFragments(ownerId, expand);
-    if (expand) {
-      // listFragments returns plain objects (deserialized JSON); re-create Fragment instances
-      return fragments.map((f) => new Fragment(typeof f === 'string' ? JSON.parse(f) : f));
-    }
-    return fragments;
+    // Always fetch full items: an id-only listing can't tell which ones expired
+    const items = (await listFragments(ownerId, true)) || [];
+    // listFragments returns plain objects (deserialized JSON); re-create Fragment instances
+    const fragments = items
+      .map((f) => new Fragment(typeof f === 'string' ? JSON.parse(f) : f))
+      .filter((f) => !f.isExpired);
+    return expand ? fragments : fragments.map((f) => f.id);
   }
 
   /**
@@ -67,7 +85,10 @@ class Fragment {
     const data = await readFragment(ownerId, id);
     if (!data) throw new Error(`fragment not found: ${id}`);
     // Re-create a real Fragment instance (readFragment returns a plain object)
-    return new Fragment(data);
+    const fragment = new Fragment(data);
+    // An expired fragment is treated exactly like a missing one
+    if (fragment.isExpired) throw new Error(`fragment not found: ${id}`);
+    return fragment;
   }
 
   /**
@@ -87,6 +108,15 @@ class Fragment {
   save() {
     this.updated = new Date().toISOString();
     return writeFragment(this);
+  }
+
+  /**
+   * Atomically adds one to the fragment's stored view count
+   * @returns Promise<number> the new count
+   */
+  async recordView() {
+    this.viewCount = await incrementViews(this.ownerId, this.id);
+    return this.viewCount;
   }
 
   /**

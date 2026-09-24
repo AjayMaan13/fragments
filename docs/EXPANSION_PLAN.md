@@ -134,7 +134,15 @@ the part actually worth doing in Terraform.
 - **Learn:** module outputs feeding into other modules' inputs — this is the first
   point where you'll feel *why* modules exist instead of one giant file.
 
-### Phase 5 — DNS/TLS
+### Phase 5 — DNS/TLS (DECISION: deferred; will use CloudFront instead)
+The new AWS account has no domain (the old one used a Seneca subdomain), so
+instead of the ACM-on-ALB approach below, the plan is a `modules/cdn`
+CloudFront distribution in front of the ALB: free HTTPS on a
+`*.cloudfront.net` address, no domain purchase. It must forward the
+`Authorization` header and disable caching for API routes. The CloudFront→ALB
+hop stays HTTP. Not required for anything to work while the UI runs on
+localhost; needed only if the UI is deployed publicly. Original plan, kept
+for reference if a domain is bought later:
 - `modules/dns-tls`: reference your existing imported Let's Encrypt cert via
   `data "aws_acm_certificate"` (don't recreate it — importing a cert into Terraform
   as a *new* resource would require re-uploading the private key). If you'd rather
@@ -145,7 +153,20 @@ the part actually worth doing in Terraform.
   this reinforces it.
 
 ### Phase 6 — Application features (no new infra)
-Do these directly in the app code, deployed on top of what Phases 1–5 built:
+Do these directly in the app code, deployed on top of what Phases 1–5 built.
+Suggested build order, with what each touches in the current codebase:
+
+| # | Feature | Files touched | Effort | New infra? |
+|---|---|---|---|---|
+| 1 | **Expiring fragments** | `fragment.js` (new `expiresAt` field), `post.js` (accept it), `getId.js`/`getIdInfo.js` (treat expired as 404) | Small | No, TTL is already on the table |
+| 2 | **View counter** | `data/aws/index.js` (new `incrementViews` using `UpdateCommand` with `ADD`), `getId.js`, `getIdInfo.js` (show the count) | Small | No, `UpdateItem` is already permitted in IAM |
+| 3 | **Public share link** | new route `GET /v1/fragments/:id/share`, `@aws-sdk/s3-request-presigner` | Small–medium | No |
+| 4 | **Image thumbnails** | the conversion code in `getId.js`, a `?width=` param through `sharp` | Small | No |
+| 5 | **QR code** | conversion extension `.qr` in `getId.js`, the `qrcode` npm package | Small | No |
+| 6 | **Content expansion** (PDF, DOCX, XML) | `fragment.js` (`supportedTypes` and `formats` map), `getId.js`, new libraries | Medium–large | No |
+| 7 | **Event-driven side effect** | Lambda + S3 notification in a new Terraform `events` module | Medium | **Yes** (this is Phase 7) |
+
+The individual items:
 
 - **Content expansion:** add PDF/DOCX/XML to the existing conversion map — same
   pattern as your current markdown→HTML/JSON↔YAML paths, new libraries

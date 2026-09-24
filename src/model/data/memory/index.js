@@ -56,6 +56,18 @@ function deleteFragment(ownerId, id) {
   ]);
 }
 
+// Adds one to a fragment's `viewCount`. Returns a Promise<number> with the new count.
+async function incrementViews(ownerId, id) {
+  const fragment = await readFragment(ownerId, id);
+  if (!fragment) {
+    throw new Error(`missing entry for ownerId=${ownerId} and id=${id}`);
+  }
+  fragment.viewCount = (fragment.viewCount || 0) + 1;
+  await writeFragment(fragment);
+  return fragment.viewCount;
+}
+
+module.exports.incrementViews = incrementViews;
 module.exports.listFragments = listFragments;
 module.exports.writeFragment = writeFragment;
 module.exports.readFragment = readFragment;

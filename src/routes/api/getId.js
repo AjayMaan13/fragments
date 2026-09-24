@@ -55,6 +55,13 @@ module.exports = async (req, res) => {
     return res.status(404).json(createErrorResponse(404, 'Fragment not found'));
   }
 
+  // A failed counter update shouldn't stop someone reading their own data
+  try {
+    await fragment.recordView();
+  } catch (err) {
+    logger.warn({ err, id }, 'Unable to record fragment view');
+  }
+
   // No extension: return the raw data using its original type
   if (!ext) {
     res.setHeader('Content-Type', fragment.type);
