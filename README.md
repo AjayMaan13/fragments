@@ -13,8 +13,8 @@ Built as a full CI/CD-driven production system: every push runs a full test suit
 ## What it does
 
 - Authenticated users can create, read, update, and delete "fragments" of data via a REST API
-- Supports 11 content types: `text/plain`, `text/markdown`, `text/html`, `text/csv`, `application/json`, `application/yaml`, and 5 image formats (`png`, `jpeg`, `webp`, `avif`, `gif`)
-- Converts fragments on read between compatible formats — markdown → HTML, JSON ↔ YAML, CSV → JSON, and any image format → any other image format (via `sharp`/libvips) — without ever storing more than one copy of the data
+- Supports 12 content types: `text/plain`, `text/markdown`, `text/html`, `text/csv`, `application/json`, `application/yaml`, `application/xml`, and 5 image formats (`png`, `jpeg`, `webp`, `avif`, `gif`)
+- Converts fragments on read between compatible formats — markdown → HTML, JSON ↔ YAML, JSON ↔ XML, CSV → JSON, any image format → any other image format (via `sharp`/libvips), and markdown or plain text → PDF (`.pdf`) or Word (`.docx`) — without ever storing more than one copy of the data
 - Two swappable backends, controlled entirely by environment variables, no code changes required:
   - **Auth:** HTTP Basic (local dev) or Amazon Cognito (production)
   - **Storage:** in-memory (local dev) or Amazon S3 + DynamoDB (production)

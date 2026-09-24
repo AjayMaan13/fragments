@@ -79,7 +79,7 @@ describe('GET /v1/fragments/:id.ext conversions', () => {
     const { id } = post.body.fragment;
 
     const res = await request(app)
-      .get(`/v1/fragments/${id}.pdf`)
+      .get(`/v1/fragments/${id}.xyz`)
       .auth('test-user1@fragments-testing.com', 'test-password1');
 
     expect(res.statusCode).toBe(415);

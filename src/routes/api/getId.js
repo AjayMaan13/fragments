@@ -8,6 +8,7 @@ const sharp = require('sharp');
 const { Fragment } = require('../../model/fragment');
 const { createErrorResponse } = require('../../response');
 const logger = require('../../logger');
+const { convert, PDF, DOCX } = require('../../convert');
 
 const md = new MarkdownIt();
 
@@ -20,6 +21,9 @@ const extToType = {
   '.json': 'application/json',
   '.yaml': 'application/yaml',
   '.yml': 'application/yaml',
+  '.xml': 'application/xml',
+  '.pdf': PDF,
+  '.docx': DOCX,
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -139,6 +143,13 @@ module.exports = async (req, res) => {
     // image -> image (any supported pair)
     if (imageTypes.includes(fragment.mimeType) && imageTypes.includes(targetType)) {
       const converted = await transformImage(data, targetType, width);
+      res.setHeader('Content-Type', targetType);
+      return res.status(200).send(converted);
+    }
+
+    // xml <-> json, markdown/text -> pdf/docx
+    const converted = await convert(data, fragment.mimeType, targetType);
+    if (converted !== undefined) {
       res.setHeader('Content-Type', targetType);
       return res.status(200).send(converted);
     }

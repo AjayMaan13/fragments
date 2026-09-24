@@ -15,6 +15,7 @@ const {
   incrementViews,
   createShareUrl,
 } = require('./data');
+const { PDF, DOCX } = require('../convert');
 
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'];
 
@@ -25,6 +26,7 @@ const supportedTypes = [
   'text/csv',
   'application/json',
   'application/yaml',
+  'application/xml',
   ...imageTypes,
 ];
 
@@ -186,12 +188,13 @@ class Fragment {
    */
   get formats() {
     const conversionMap = {
-      'text/plain': ['text/plain'],
-      'text/markdown': ['text/markdown', 'text/html', 'text/plain'],
+      'text/plain': ['text/plain', PDF, DOCX],
+      'text/markdown': ['text/markdown', 'text/html', 'text/plain', PDF, DOCX],
       'text/html': ['text/html', 'text/plain'],
       'text/csv': ['text/csv', 'text/plain', 'application/json'],
-      'application/json': ['application/json', 'application/yaml', 'text/plain'],
+      'application/json': ['application/json', 'application/yaml', 'application/xml', 'text/plain'],
       'application/yaml': ['application/yaml', 'text/plain'],
+      'application/xml': ['application/xml', 'application/json', 'text/plain'],
       'image/png': imageTypes,
       'image/jpeg': imageTypes,
       'image/webp': imageTypes,

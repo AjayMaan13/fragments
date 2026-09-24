@@ -1,4 +1,5 @@
 const { Fragment } = require('../../src/model/fragment');
+const { PDF, DOCX } = require('../../src/convert');
 
 // Wait for a certain number of ms (default 50). Feel free to change this value
 // if it isn't long enough for your test runs. Returns a Promise.
@@ -166,12 +167,12 @@ describe('Fragment class', () => {
         type: 'text/plain; charset=utf-8',
         size: 0,
       });
-      expect(fragment.formats).toEqual(['text/plain']);
+      expect(fragment.formats).toEqual(['text/plain', PDF, DOCX]);
     });
 
     test('formats returns the expected result for markdown', () => {
       const fragment = new Fragment({ ownerId: '1234', type: 'text/markdown', size: 0 });
-      expect(fragment.formats).toEqual(['text/markdown', 'text/html', 'text/plain']);
+      expect(fragment.formats).toEqual(['text/markdown', 'text/html', 'text/plain', PDF, DOCX]);
     });
 
     test('formats returns the expected result for csv', () => {
@@ -181,7 +182,12 @@ describe('Fragment class', () => {
 
     test('formats returns the expected result for json', () => {
       const fragment = new Fragment({ ownerId: '1234', type: 'application/json', size: 0 });
-      expect(fragment.formats).toEqual(['application/json', 'application/yaml', 'text/plain']);
+      expect(fragment.formats).toEqual([
+        'application/json',
+        'application/yaml',
+        'application/xml',
+        'text/plain',
+      ]);
     });
 
     test('formats returns the expected result for yaml', () => {
