@@ -22,6 +22,12 @@ variable "ui_callback_urls" {
   default     = ["http://localhost:1234"]
 }
 
+variable "github_repo" {
+  description = "GitHub repository (owner/name) whose version tags may deploy to this account"
+  type        = string
+  default     = "AjayMaan13/fragments"
+}
+
 variable "project_name" {
   description = "Short name used as a prefix for resource names"
   type        = string

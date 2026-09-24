@@ -42,3 +42,8 @@ output "task_role_arn" {
   description = "Used as taskRoleArn in the ECS task definition (Phase 3) — this is what your app code runs as"
   value       = module.iam.task_role_arn
 }
+
+output "github_deploy_role_arn" {
+  description = "Set as the AWS_DEPLOY_ROLE_ARN variable in the GitHub repo (used by cd.yml)"
+  value       = module.cicd.deploy_role_arn
+}

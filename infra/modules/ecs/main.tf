@@ -79,4 +79,10 @@ resource "aws_ecs_service" "this" {
     container_name   = "${var.project_name}-container"
     container_port   = var.container_port
   }
+
+  # The CD pipeline registers a new task definition revision on every release;
+  # without this, `terraform apply` would roll the service back to Terraform's.
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
 }

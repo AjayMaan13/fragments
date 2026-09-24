@@ -10,6 +10,10 @@
 # This will update `version` in package.json to `0.7.0` and create a new
 # tag, `v0.7.0` in git. We'll then use this tag (i.e., `v0.7.0`) to tag
 # our docker image before we push to AWS.
+#
+# Terraform (infra/) owns the infrastructure and the task definition's settings.
+# This workflow only ships a new image: it copies the running task definition,
+# swaps in the new image, and rolls the service onto it.
 name: cd
 
 on:
@@ -18,6 +22,11 @@ on:
     tags:
       # Any tag starting with v... should trigger this workflow.
       - 'v**'
+
+# Lets the job ask GitHub for a signed token that AWS trusts (no stored keys)
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   # NOTE: this assumes our CI jobs have already passed previously
@@ -33,13 +42,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Configure AWS Credentials using Secrets
+      # The role is created by Terraform (see `terraform output github_deploy_role_arn`)
+      # and stored in the repo's Actions variables as AWS_DEPLOY_ROLE_ARN
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          # Use our GitHub Encrypted Secrets via secrets.*
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          # Hard-code our region, which isn't a secret, and won't change
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-2
 
       # Login to our ECR repository using the configured credentials
@@ -66,8 +74,31 @@ jobs:
           # Use the git tag version and `latest`
           tags: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:${{ env.VERSION_TAG }}, ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:latest
 
+      # The service only exists while the infrastructure is up (`terraform apply`).
+      # If it has been torn down, the image above is still pushed and we stop here.
+      - name: Check the ECS service is running
+        id: service
+        run: |
+          status=$(aws ecs describe-services --cluster fragments-cluster --services fragments-service \
+            --query 'services[0].status' --output text)
+          echo "status=$status"
+          echo "up=$([ "$status" = ACTIVE ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Skip deploy notice
+        if: steps.service.outputs.up != 'true'
+        run: echo "::notice::Image pushed, but the ECS service is not running. Run terraform apply, then re-run this workflow."
+
+      # Copy the task definition Terraform created, minus the fields ECS sets itself
+      - name: Get the current ECS task definition
+        if: steps.service.outputs.up == 'true'
+        run: |
+          aws ecs describe-task-definition --task-definition fragments-task --query taskDefinition \
+            | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
+            > task-definition.json
+
       # Update the ECS Task Definition JSON to use the image we just pushed
       - name: Fill in the new image ID in the Amazon ECS task definition
+        if: steps.service.outputs.up == 'true'
         id: update-task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         env:
@@ -75,13 +106,14 @@ jobs:
           ECR_REPO: fragments
           VERSION_TAG: ${{ github.ref_name }}
         with:
-          task-definition: fragments-definition.json
+          task-definition: task-definition.json
           # Must match the container name in the ECS task definition exactly
           container-name: fragments-container
           image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:${{ env.VERSION_TAG }}
 
       # Register the updated task definition and deploy it to our ECS service
       - name: Deploy Amazon ECS task definition
+        if: steps.service.outputs.up == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.update-task-def.outputs.task-definition }}

@@ -70,3 +70,14 @@ module "events" {
   bucket_arn   = module.storage.bucket_arn
   stream_arn   = module.storage.table_stream_arn
 }
+
+module "cicd" {
+  source = "./modules/cicd"
+
+  project_name       = var.project_name
+  github_repo        = var.github_repo
+  ecr_repository_arn = module.ecr.repository_arn
+  ecs_cluster_name   = "${var.project_name}-cluster"
+  ecs_service_name   = "${var.project_name}-service"
+  task_role_arns     = [module.iam.task_execution_role_arn, module.iam.task_role_arn]
+}

@@ -102,6 +102,24 @@ jobs:
       - name: Run Hurl Tests
         run: npm run test:integration
 
+  # Checks the Terraform in infra/ is formatted and valid. Needs no AWS
+  # credentials or state: -backend=false only downloads the providers.
+  terraform:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+      - name: Validate
+        run: terraform init -backend=false && terraform validate
+
   docker-hub:
     name: Build and Push to Docker Hub
     # Don't bother running this job unless the other jobs all pass
