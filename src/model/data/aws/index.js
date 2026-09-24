@@ -3,6 +3,7 @@
 const logger = require('../../../logger');
 const s3Client = require('./s3Client');
 const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const ddbDocClient = require('./ddbDocClient');
 const {
   PutCommand,
@@ -233,6 +234,21 @@ async function incrementViews(ownerId, id) {
   }
 }
 
+// Creates a pre-signed URL that lets anyone with the link download a fragment's
+// data straight from S3, until `expiresIn` seconds pass. Signing happens
+// locally with our own credentials (no request to AWS). We don't set a
+// Content-Type when uploading, so ResponseContentType tells S3 what to send.
+// Returns a Promise<string>.
+function createShareUrl(ownerId, id, expiresIn, contentType) {
+  const command = new GetObjectCommand({
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
+    Key: `${ownerId}/${id}`,
+    ResponseContentType: contentType,
+  });
+  return getSignedUrl(s3Client, command, { expiresIn });
+}
+
+module.exports.createShareUrl = createShareUrl;
 module.exports.incrementViews = incrementViews;
 module.exports.listFragments = listFragments;
 module.exports.writeFragment = writeFragment;

@@ -13,6 +13,7 @@ const {
   listFragments,
   deleteFragment,
   incrementViews,
+  createShareUrl,
 } = require('./data');
 
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'];
@@ -117,6 +118,27 @@ class Fragment {
   async recordView() {
     this.viewCount = await incrementViews(this.ownerId, this.id);
     return this.viewCount;
+  }
+
+  /**
+   * Creates a temporary public link to the fragment's data. The link never
+   * outlives the fragment itself: S3 keeps the object after DynamoDB's TTL
+   * removes the metadata, so an unbounded link could leak expired data.
+   * @param {number} expiresIn requested link lifetime in seconds
+   * @returns Promise<{url: string, expiresIn: number, expiresAt: number}|null>
+   *   null when the storage backend can't make links (in-memory mode)
+   */
+  async createShareLink(expiresIn) {
+    const now = Math.floor(Date.now() / 1000);
+    const remaining = this.expiresAt === undefined ? Infinity : this.expiresAt - now;
+    const seconds = Math.max(1, Math.min(expiresIn, remaining));
+
+    // Never serve user-supplied HTML as a live page from the storage domain
+    const contentType = this.mimeType === 'text/html' ? 'text/plain' : this.type;
+
+    const url = await createShareUrl(this.ownerId, this.id, seconds, contentType);
+    if (!url) return null;
+    return { url, expiresIn: seconds, expiresAt: now + seconds };
   }
 
   /**

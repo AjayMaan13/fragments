@@ -27,6 +27,7 @@ const rawBody = () =>
 
 router.get('/fragments', require('./get'));
 router.get('/fragments/:id/info', require('./getIdInfo'));
+router.get('/fragments/:id/share', require('./share'));
 router.get('/fragments/:id', require('./getId'));
 router.post('/fragments', rawBody(), require('./post'));
 router.put('/fragments/:id', rawBody(), require('./put'));

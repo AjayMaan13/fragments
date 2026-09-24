@@ -67,6 +67,13 @@ async function incrementViews(ownerId, id) {
   return fragment.viewCount;
 }
 
+// Share links are pre-signed S3 URLs; there's no S3 in memory mode, so there's
+// nothing to link to. Returns a Promise<undefined>.
+function createShareUrl() {
+  return Promise.resolve(undefined);
+}
+
+module.exports.createShareUrl = createShareUrl;
 module.exports.incrementViews = incrementViews;
 module.exports.listFragments = listFragments;
 module.exports.writeFragment = writeFragment;
