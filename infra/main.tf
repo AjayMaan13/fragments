@@ -61,3 +61,12 @@ module "ecs" {
   cognito_pool_id     = module.auth.user_pool_id
   cognito_client_id   = module.auth.client_id
 }
+
+module "events" {
+  source = "./modules/events"
+
+  project_name = var.project_name
+  bucket_name  = module.storage.bucket_name
+  bucket_arn   = module.storage.bucket_arn
+  stream_arn   = module.storage.table_stream_arn
+}

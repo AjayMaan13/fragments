@@ -40,6 +40,11 @@ resource "aws_dynamodb_table" "fragments" {
     type = "S"
   }
 
+  # Emits an event for every change, so the events module can react when
+  # DynamoDB deletes an expired fragment. Keys are all it needs to find the S3 file.
+  stream_enabled   = true
+  stream_view_type = "KEYS_ONLY"
+
   # Items with an `expiresAt` attribute (a Number: Unix epoch seconds) are
   # deleted automatically by DynamoDB some time after that moment passes.
   ttl {

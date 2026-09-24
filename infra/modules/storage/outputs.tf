@@ -13,3 +13,7 @@ output "table_name" {
 output "table_arn" {
   value = aws_dynamodb_table.fragments.arn
 }
+
+output "table_stream_arn" {
+  value = aws_dynamodb_table.fragments.stream_arn
+}
