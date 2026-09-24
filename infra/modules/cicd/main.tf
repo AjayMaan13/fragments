@@ -58,6 +58,9 @@ data "aws_iam_policy_document" "deploy" {
       "ecr:UploadLayerPart",
       "ecr:CompleteLayerUpload",
       "ecr:PutImage",
+      # buildx checks for existing images/layers before it uploads
+      "ecr:BatchGetImage",
+      "ecr:GetDownloadUrlForLayer",
     ]
     resources = [var.ecr_repository_arn]
   }
