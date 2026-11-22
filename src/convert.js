@@ -228,6 +228,7 @@ async function convertFragment(data, from, to, { width } = {}) {
 module.exports = {
   convertFragment,
   convert,
+  toBlocks, // exported so the markdown parsing can be tested directly
   ConversionLimitError,
   MAX_WIDTH,
   extToType,

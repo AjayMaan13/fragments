@@ -66,12 +66,16 @@ module.exports = async (req, res) => {
 
   // No extension: return the data using its original type (resized if asked)
   if (!ext) {
-    res.setHeader('Content-Type', fragment.type);
-    if (!width) return res.status(200).send(data);
+    if (!width) {
+      res.setHeader('Content-Type', fragment.type);
+      return res.status(200).send(data);
+    }
     try {
       const resized = await timeConversion(fragment.mimeType, () =>
         convertFragment(data, fragment.mimeType, fragment.mimeType, { width })
       );
+      // Only now: set earlier, a failed resize would send its JSON error labelled as an image
+      res.setHeader('Content-Type', fragment.type);
       return res.status(200).send(resized);
     } catch (err) {
       return sendConversionError(res, err, id, 'Unable to resize fragment');

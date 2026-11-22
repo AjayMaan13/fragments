@@ -279,3 +279,107 @@ describe('retryDelaySeconds', () => {
     expect([1, 2, 3, 4, 5, 6].map(retryDelaySeconds)).toEqual([10, 20, 40, 60, 60, 60]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Retry versus fail, and the numbers the worker reports. Gaps found by
+// mutation testing (docs/mutation/).
+// ---------------------------------------------------------------------------
+
+describe('when a failed attempt is the last one', () => {
+  const poison = async () =>
+    makeJob(await makeFragment('application/json', '{not json'), 'application/yaml');
+
+  test('the queue has delivered it the maximum number of times, even if the job has been claimed fewer', async () => {
+    const job = await poison();
+    const queue = fakeQueue();
+    expect(await processMessage(message(job, { receiveCount: Job.maxAttempts() }), { queue })).toBe(
+      'failed'
+    );
+    expect((await readJob(owner, job.jobId)).attempts).toBe(1);
+  });
+
+  test('the job has been claimed the maximum number of times, even if the queue shows fewer deliveries', async () => {
+    const job = await poison();
+    // two earlier workers claimed it and vanished
+    await claimJob(owner, job.jobId, Job.nowSeconds() - 1000, 10);
+    await claimJob(owner, job.jobId, Job.nowSeconds() - 500, 10);
+
+    expect(await processMessage(message(job, { receiveCount: 1 }), { queue: fakeQueue() })).toBe(
+      'failed'
+    );
+    expect((await readJob(owner, job.jobId)).attempts).toBe(Job.maxAttempts());
+  });
+
+  test('one attempt short of the maximum on both counts is still retried', async () => {
+    const job = await poison();
+    expect(
+      await processMessage(message(job, { receiveCount: Job.maxAttempts() - 1 }), {
+        queue: fakeQueue(),
+      })
+    ).toBe('retry');
+  });
+});
+
+describe('what counts as "fragment not found"', () => {
+  const { Fragment: F } = require('../../src/model/fragment');
+  afterEach(() => jest.restoreAllMocks());
+
+  test("only the model's own message is permanent; the same words buried in another error are retried", async () => {
+    const job = await makeJob(await makeFragment('text/markdown', '# x'));
+    jest.spyOn(F, 'byId').mockRejectedValueOnce(new Error('upstream said: fragment not found'));
+    expect(await processMessage(message(job), { queue: fakeQueue() })).toBe('retry');
+  });
+
+  test('a database outage is retried', async () => {
+    const job = await makeJob(await makeFragment('text/markdown', '# x'));
+    jest.spyOn(F, 'byId').mockRejectedValueOnce(new Error('connect ECONNRESET'));
+    expect(await processMessage(message(job), { queue: fakeQueue() })).toBe('retry');
+  });
+
+  test("the model's message, as it is really worded, is permanent", async () => {
+    const job = await makeJob(await makeFragment('text/markdown', '# x'));
+    jest.spyOn(F, 'byId').mockRejectedValueOnce(new Error('fragment not found: abc'));
+    expect(await processMessage(message(job), { queue: fakeQueue() })).toBe('failed');
+  });
+});
+
+describe('the numbers it reports', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('processing time is in milliseconds and plausible for a tiny conversion', async () => {
+    const job = await makeJob(await makeFragment('text/markdown', '# fast'));
+    await processMessage(message(job), { queue: fakeQueue() });
+    const stored = await readJob(owner, job.jobId);
+    expect(Number.isInteger(stored.durationMs)).toBe(true);
+    expect(stored.durationMs).toBeGreaterThanOrEqual(0);
+    expect(stored.durationMs).toBeLessThan(2000);
+    const [, processingMs] = recordJob.mock.calls[0];
+    expect(processingMs).toBeLessThan(2000);
+  });
+
+  test('end-to-end time is how long ago the job was created', async () => {
+    const job = await makeJob(await makeFragment('text/markdown', '# slow queue'));
+    const created = Date.parse(job.createdAt);
+    jest.spyOn(Date, 'now').mockReturnValue(created + 7500);
+    await processMessage(message(job), { queue: fakeQueue() });
+    expect(recordJob.mock.calls[0][2]).toBe(7500);
+  });
+
+  test('end-to-end time is never negative, even if clocks disagree', async () => {
+    const job = await makeJob(await makeFragment('text/markdown', '# clocks'));
+    jest.spyOn(Date, 'now').mockReturnValue(Date.parse(job.createdAt) - 5000);
+    await processMessage(message(job), { queue: fakeQueue() });
+    expect(recordJob.mock.calls[0][2]).toBe(0);
+  });
+
+  test('a job held by another worker is looked at again when that lease ends, not before or long after', async () => {
+    const job = await makeJob(await makeFragment('text/markdown', '# held'));
+    const now = Job.nowSeconds();
+    await claimJob(owner, job.jobId, now, 100);
+    const queue = fakeQueue();
+    await processMessage(message(job), { queue });
+    const [, wait] = queue.delay.mock.calls[0];
+    expect(wait).toBeGreaterThanOrEqual(99);
+    expect(wait).toBeLessThanOrEqual(100);
+  });
+});

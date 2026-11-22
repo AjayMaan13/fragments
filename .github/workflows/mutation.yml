@@ -1,0 +1,45 @@
+# .github/workflows/mutation.yml
+
+# Mutation testing with Stryker: change the code in small ways and check that a
+# test fails. Slow (about 15 minutes), so it does not run on every pull request:
+# weekly, and on demand from the Actions tab. The HTML report is attached to the run.
+#
+# The score gate (`thresholds.break` in stryker.conf.json) makes this job fail when
+# the mutation score drops below it.
+name: mutation
+
+on:
+  schedule:
+    # Mondays at 07:00 UTC
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+jobs:
+  stryker:
+    name: Mutation tests (Stryker)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Install node dependencies
+        run: npm ci
+
+      # --force: always test every mutant, so the score is never a stale cached one
+      - name: Run Stryker
+        run: npx stryker run --force
+
+      - name: Upload the mutation report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: reports/mutation/
+          retention-days: 30
+          if-no-files-found: ignore
