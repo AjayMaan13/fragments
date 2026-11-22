@@ -1,6 +1,6 @@
 # Baseline load test (v0.9.0)
 
-> **Status: experiments 1, 1b, 2 and 3 run (2026-11-22) on `v0.9.0-rc1`. Fixes deployed as `v0.9.0-rc2`; experiment 3 re-run (passes), experiment 2 re-run NOT done yet.**
+> **Status: experiments 1, 1b, 2 and 3 run (2026-11-22) on `v0.9.0-rc1`; fixes deployed as `v0.9.0-rc2` and experiments 2 and 3 re-run on it. The memory crashes are fixed; cheap reads are still starved by heavy conversions (Phase 2's job).**
 > Every number below comes from a committed k6 summary in this folder or from CloudWatch, and says which.
 > Blank means not measured.
 
@@ -97,6 +97,32 @@ Findings (measured unless marked):
 4. **Memory exhaustion is real, and it does not need a huge-pixel image.** It happened with ordinary 765 KiB 1080p jpegs, through concurrency alone. The dashboard's memory widget showed 91-99% from 11:17, but the `ecs-memory` alarm (threshold 80%, 2 consecutive minutes) only went to ALARM at **11:21:35**, about 3 minutes after the task had already been OOM-killed. ECS metrics reach CloudWatch with a lag of a few minutes, so this alarm is too slow to prevent an OOM kill; it only reports one.
 5. **Implication for Phase 2:** the worker will also be slow on avif at 0.25 vCPU (about 32 s a job), so job latency, worker size or a lower `sharp` avif effort need deciding there, and the "heavy" fraction used for the before/after comparison should be re-chosen (5% avif at 20 req/s overwhelms any single small task and makes the "before" unusable as a gradual curve).
 
+### Experiment 2 re-run on the fixed build (`v0.9.0-rc2`)
+
+Same method as above (16 reads/s alone, then the 80/15/5 mix at 20 req/s, 3 minutes each), run about 40 minutes after deploying the fixes.
+Summaries: [`exp2fix-reads-only-16rps.json`](exp2fix-reads-only-16rps.json), [`exp2fix-mixed-20rps.json`](exp2fix-mixed-20rps.json).
+
+| | rc1 (before) | rc2 (after) |
+|---|---|---|
+| reads only, 16 req/s: read p50 / p95 / p99 | 31 / 63 / 97 ms | 31 / 70 / 137 ms |
+| reads only: failed | 0 / 2,972 | 0 / 2,972 |
+| mix: cheap-read p50 | 10.0 s | 6.1 s |
+| mix: cheap-read p95 | 60.0 s (timeout floor) | **60.0 s (timeout floor)** |
+| mix: failed requests | 994 / 2,291 (43%) | 1,153 / 2,924 (39%) |
+| mix: avif conversions that finished | 0 / 111 | 0 / 144 |
+| mix: iterations k6 had to drop | 1,296 | 782 |
+| mix: peak ECS memory | 99% (OOM kill, exit 137) | **63%, no OOM** |
+| mix: peak ECS CPU | 100% | 100% |
+| mix: task killed? | yes, twice (health checks, then OOM) | yes, once, **for failing ELB health checks (no OOM)** |
+
+Also on rc2: the busy limit shed **114 image requests with a 503** (app log "Busy converting other images"), and the load balancer generated another 459 5xx while the task was unresponsive (13 + 445 + 1). The reads-only run showed no regression from the fixes or the keep-alive change (p95 63 ms to 70 ms is within run-to-run noise; not tested for significance).
+
+Findings:
+1. **The memory crashes are fixed.** Memory peaked at 63% instead of 99% and no container was OOM-killed. The huge-pixel case is fixed too (experiment 3 below).
+2. **The fixes do not protect cheap reads, and I should not claim they do.** Cheap-read p95 is still at k6's 60 s timeout floor, a third of requests still fail, and no avif conversion finishes. Reason: the bottleneck is **CPU**, not memory. Two concurrent avif conversions (the limit allows 2) take all of the 0.25 vCPU for about a minute each, so the single Node process serving reads (and health checks) gets almost none. That is why ECS still killed the task for failing health checks.
+3. **This is the number Phase 2 has to beat:** cheap-read p95 of **at least 60 s** (floor) and ~39% failures with the 80/15/5 mix, versus **70 ms and 0% failures** with the same reads alone. Isolating heavy work from the request path (a separate worker) is the actual fix; the limits in `src/convert.js` are a safety net that stops crashes, not a performance fix.
+4. **The widened `5xx-rate` alarm works.** In this run it went to **ALARM at 12:12:58 EST**, about 4 minutes after the worst minute (12:09: 1,357 requests, 467 5xx, 34%). The same kind of overload left the old alarm silent. The 4-minute delay is CloudWatch's metric lag plus the 2-of-3-minutes rule.
+
 ## Experiment 3: memory with a small file of huge pixel dimensions
 
 Hypothesis: a PNG of a few hundred KB but ~256 megapixels can exhaust the 512 MB task when `sharp` decodes it.
@@ -128,6 +154,6 @@ Triggered by the experiment 1b and 2 overloads rather than a dedicated drill (ne
 | Alarm | How triggered | Result |
 |---|---|---|
 | `fragments-p95-latency` | experiment 1b: p95 `TargetResponseTime` 4.5 s then 26.4 s (threshold 3 s, 2 of 3 minutes) | **Went to ALARM at 10:56:52 EST**, about 4 minutes after the latency breach began (CloudWatch alarm history). Email receipt: **not yet confirmed**. |
-| `fragments-5xx-rate` | same run | Stayed OK: target 5xx was 0 (see experiment 1b, finding 4) |
+| `fragments-5xx-rate` | experiment 1b: stayed OK, target 5xx was 0 (finding 4 there). Experiment 2 re-run on rc2 (alarm now counts ELB 5xx too): minutes at 5.3% and 34.4% | **ALARM at 12:12:58 EST** in the re-run (CloudWatch alarm history). Email receipt not confirmed. |
 | `fragments-unhealthy-hosts` | same run | Stayed OK at last check; `UnHealthyHostCount` hit 1 at 10:52 and 10:55 but not in two consecutive minutes |
 | `fragments-ecs-memory` | experiment 1b: stayed OK (memory peaked at 32%). Experiment 2: memory 91-99% (11:17-11:18) | **ALARM at 11:21:35 EST** in experiment 2, after the task was already killed (see experiment 2, finding 4). Email receipt not confirmed. |
