@@ -105,10 +105,12 @@ Watch the dashboard's ECS memory widget and `aws ecs describe-services` / stoppe
 
 ### 5. Tear down
 
+Order matters. The Cognito client is not part of the ALB/ECS teardown, so switch the password flow off first, then remove the billable parts:
+
 ```bash
 cd infra
-terraform apply -var enable_password_auth=false -var desired_count=0   # or just destroy:
-terraform destroy -target=module.ecs -target=module.alb                # also removes the dashboard and alarms
+terraform apply -target=module.auth -var enable_password_auth=false
+terraform destroy -target=module.ecs -target=module.alb   # also removes the dashboard and alarms
 ```
 
 Delete the load-test Cognito user if you will not reuse it.
