@@ -57,3 +57,17 @@ output "alarm_names" {
   description = "CloudWatch alarms that notify the SNS topic"
   value       = module.observability.alarm_names
 }
+
+output "jobs_queue_url" {
+  description = "AWS_SQS_QUEUE_URL for the API and worker"
+  value       = module.queue.queue_url
+}
+
+output "jobs_dlq_name" {
+  description = "Dead-letter queue: anything here is a job that failed every attempt"
+  value       = module.queue.dlq_name
+}
+
+output "worker_service_name" {
+  value = module.worker.service_name
+}

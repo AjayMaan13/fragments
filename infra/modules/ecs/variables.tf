@@ -53,6 +53,16 @@ variable "api_url" {
   type        = string
 }
 
+variable "jobs_table_name" {
+  description = "DynamoDB table for async conversion jobs"
+  type        = string
+}
+
+variable "sqs_queue_url" {
+  description = "SQS queue the API sends conversion jobs to"
+  type        = string
+}
+
 # Wired up in Phase 4 once the Cognito module exists.
 variable "cognito_pool_id" {
   type    = string

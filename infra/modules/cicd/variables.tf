@@ -19,6 +19,10 @@ variable "ecs_service_name" {
   type = string
 }
 
+variable "ecs_worker_service_name" {
+  type = string
+}
+
 variable "task_role_arns" {
   description = "Task execution and task role ARNs the deploy may pass to ECS"
   type        = list(string)

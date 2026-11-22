@@ -47,4 +47,30 @@ async function timeConversion(targetType, fn) {
   return result;
 }
 
-module.exports = { recordConversion, timeConversion, NAMESPACE };
+// Record one finished job: how long the worker spent converting, and how long
+// the caller waited in total (queued + converting), both in milliseconds
+function recordJob(targetType, processingMs, endToEndMs) {
+  logger.info(
+    {
+      _aws: {
+        Timestamp: Date.now(),
+        CloudWatchMetrics: [
+          {
+            Namespace: NAMESPACE,
+            Dimensions: [['TargetType']],
+            Metrics: [
+              { Name: 'JobDuration', Unit: 'Milliseconds' },
+              { Name: 'JobEndToEnd', Unit: 'Milliseconds' },
+            ],
+          },
+        ],
+      },
+      TargetType: targetType,
+      JobDuration: processingMs,
+      JobEndToEnd: endToEndMs,
+    },
+    'job finished'
+  );
+}
+
+module.exports = { recordConversion, recordJob, timeConversion, NAMESPACE };

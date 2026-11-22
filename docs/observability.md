@@ -6,10 +6,11 @@ Terraform module: `infra/modules/observability`. Created and destroyed with the 
 
 | Thing | Where | Notes |
 |---|---|---|
-| Dashboard `fragments-overview` | CloudWatch (`terraform output dashboard_url`) | Requests, 5xx, p50/p95/p99 latency, healthy/unhealthy targets, ECS CPU and memory, conversion duration by target type, recent errors |
-| Alarms (4) | CloudWatch, notify SNS topic `fragments-alarms` | `5xx-rate` (app 5xx plus load-balancer-generated 5xx), `p95-latency`, `unhealthy-hosts`, `ecs-memory` |
+| Dashboard `fragments-overview` | CloudWatch (`terraform output dashboard_url`) | Requests, 5xx, p50/p95/p99 latency, healthy/unhealthy targets, ECS CPU and memory, conversion duration by target type, job queue depth and oldest waiting job, job end-to-end latency, worker CPU and memory, recent errors |
+| Alarms (6) | CloudWatch, notify SNS topic `fragments-alarms` | `5xx-rate` (app 5xx plus load-balancer-generated 5xx), `p95-latency`, `unhealthy-hosts`, `ecs-memory`, `jobs-dlq-not-empty` (any dead-lettered job), `jobs-oldest-message-age` (a job waiting over 10 min: worker down or behind) |
+| `JobDuration` / `JobEndToEnd` metrics | namespace `Fragments`, dimension `TargetType` | Written by the worker per finished job: conversion time, and queued + converting time (what the caller waits) |
 | `ConversionDuration` metric | namespace `Fragments`, dimension `TargetType` | Written as Embedded Metric Format log lines by `src/metrics.js` (no PutMetricData, no IAM change) |
-| Request IDs | `X-Request-Id` header, `req.id` on every log line | Honors a valid incoming id, otherwise generates a UUID (`src/request-id.js`) |
+| Request IDs | `X-Request-Id` header, `req.id` on every log line | Honors a valid incoming id, otherwise generates a UUID (`src/request-id.js`). A job carries its request id in the queue message and the worker logs it as `requestId`, so one request can be followed from the API into the worker |
 
 Alarm email: set `-var alarm_email=you@example.com` and click the confirmation link AWS sends.
 Without it the alarms exist but notify nobody.

@@ -43,6 +43,8 @@ resource "aws_ecs_task_definition" "this" {
         { name = "AWS_REGION", value = var.aws_region },
         { name = "AWS_S3_BUCKET_NAME", value = var.s3_bucket_name },
         { name = "AWS_DYNAMODB_TABLE_NAME", value = var.dynamodb_table_name },
+        { name = "AWS_DYNAMODB_JOBS_TABLE_NAME", value = var.jobs_table_name },
+        { name = "AWS_SQS_QUEUE_URL", value = var.sqs_queue_url },
         { name = "API_URL", value = var.api_url },
         { name = "FRAGMENTS_LOG_LEVEL", value = "info" },
         { name = "AWS_COGNITO_POOL_ID", value = var.cognito_pool_id },

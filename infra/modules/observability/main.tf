@@ -148,6 +148,42 @@ resource "aws_cloudwatch_metric_alarm" "ecs_memory" {
   ok_actions          = [aws_sns_topic.alarms.arn]
 }
 
+# Anything in the dead-letter queue is a job that failed every attempt and was
+# given up on by the queue. It needs a human, so any message at all alarms.
+resource "aws_cloudwatch_metric_alarm" "dlq_depth" {
+  alarm_name          = "${var.project_name}-jobs-dlq-not-empty"
+  alarm_description   = "At least one job message is in the dead-letter queue."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  dimensions          = { QueueName = var.dlq_name }
+  statistic           = "Maximum"
+  period              = 60
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 1
+  evaluation_periods  = 1
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+  ok_actions          = [aws_sns_topic.alarms.arn]
+}
+
+# The oldest message has been waiting too long: the worker is down, stuck or
+# far behind. (Nothing waiting at all is fine and reports no data.)
+resource "aws_cloudwatch_metric_alarm" "queue_age" {
+  alarm_name          = "${var.project_name}-jobs-oldest-message-age"
+  alarm_description   = "A job has been waiting more than ${var.queue_age_threshold_seconds}s to be picked up."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateAgeOfOldestMessage"
+  dimensions          = { QueueName = var.queue_name }
+  statistic           = "Maximum"
+  period              = 60
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = var.queue_age_threshold_seconds
+  evaluation_periods  = 2
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+  ok_actions          = [aws_sns_topic.alarms.arn]
+}
+
 ###############################################################################
 # Dashboard
 ###############################################################################
@@ -288,9 +324,89 @@ resource "aws_cloudwatch_dashboard" "this" {
         }
       },
       {
-        type   = "log"
+        type   = "metric"
         x      = 0
         y      = 21
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Job queue (messages)"
+          view    = "timeSeries"
+          stacked = false
+          region  = var.aws_region
+          period  = 60
+          stat    = "Maximum"
+          metrics = [
+            ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", var.queue_name, { label = "waiting" }],
+            ["AWS/SQS", "ApproximateNumberOfMessagesNotVisible", "QueueName", var.queue_name, { label = "being processed" }],
+            ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", var.dlq_name, { label = "dead-letter queue" }],
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 21
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Oldest waiting job (seconds)"
+          view    = "timeSeries"
+          stacked = false
+          region  = var.aws_region
+          period  = 60
+          stat    = "Maximum"
+          metrics = [
+            ["AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", var.queue_name, { label = "oldest message" }],
+          ]
+          annotations = {
+            horizontal = [{ label = "alarm", value = var.queue_age_threshold_seconds }]
+          }
+        }
+      },
+      {
+        # Written by the worker (src/metrics.js recordJob). JobEndToEnd is what
+        # the caller waits: queued time plus conversion time.
+        type   = "metric"
+        x      = 0
+        y      = 27
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Job end-to-end latency p95 by target type (ms)"
+          view    = "timeSeries"
+          stacked = false
+          region  = var.aws_region
+          period  = 60
+          metrics = [
+            [{ expression = "SEARCH('{Fragments,TargetType} MetricName=\"JobEndToEnd\"', 'p95', 60)", id = "e2e" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 27
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Worker CPU and memory (%)"
+          view    = "timeSeries"
+          stacked = false
+          region  = var.aws_region
+          period  = 60
+          stat    = "Average"
+          yAxis   = { left = { min = 0, max = 100 } }
+          metrics = [
+            ["AWS/ECS", "CPUUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", var.worker_service_name, { label = "worker CPU" }],
+            ["AWS/ECS", "MemoryUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", var.worker_service_name, { label = "worker memory" }],
+          ]
+        }
+      },
+      {
+        type   = "log"
+        x      = 0
+        y      = 33
         width  = 24
         height = 6
         properties = {

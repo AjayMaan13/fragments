@@ -57,6 +57,80 @@ data "aws_iam_policy_document" "task_data_access" {
   }
 }
 
+# Jobs API: record a job and read it back, and queue it. The API does not
+# process jobs, so it gets send only (no receive/delete).
+data "aws_iam_policy_document" "task_jobs_access" {
+  statement {
+    sid       = "JobsTable"
+    actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+    resources = [var.jobs_table_arn]
+  }
+
+  statement {
+    sid       = "QueueJobs"
+    actions   = ["sqs:SendMessage"]
+    resources = [var.queue_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "task_jobs_access" {
+  name   = "${var.project_name}-task-jobs-access"
+  role   = aws_iam_role.task_role.id
+  policy = data.aws_iam_policy_document.task_jobs_access.json
+}
+
+# The worker runs as its own role so it can take messages off the queue and
+# write results, which the API must never do.
+resource "aws_iam_role" "worker_role" {
+  name               = "${var.project_name}-worker-role"
+  assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
+}
+
+data "aws_iam_policy_document" "worker_access" {
+  statement {
+    sid = "ReceiveJobs"
+    actions = [
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:ChangeMessageVisibility",
+      "sqs:GetQueueAttributes",
+    ]
+    resources = [var.queue_arn]
+  }
+
+  # Read the fragment, write the result under results/
+  statement {
+    sid       = "FragmentAndResultObjects"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${var.bucket_arn}/*"]
+  }
+
+  statement {
+    sid       = "FragmentBucketList"
+    actions   = ["s3:ListBucket"]
+    resources = [var.bucket_arn]
+  }
+
+  # The worker only reads fragment metadata, never writes it
+  statement {
+    sid       = "ReadFragmentMetadata"
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.table_arn]
+  }
+
+  statement {
+    sid       = "JobsTable"
+    actions   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+    resources = [var.jobs_table_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "worker_access" {
+  name   = "${var.project_name}-worker-access"
+  role   = aws_iam_role.worker_role.id
+  policy = data.aws_iam_policy_document.worker_access.json
+}
+
 resource "aws_iam_role_policy" "task_data_access" {
   name   = "${var.project_name}-task-data-access"
   role   = aws_iam_role.task_role.id

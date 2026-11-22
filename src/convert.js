@@ -15,6 +15,9 @@ const md = new MarkdownIt();
 const PDF = 'application/pdf';
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
+// Widest an image may be resized to (pixels)
+const MAX_WIDTH = 4096;
+
 // Map a URL extension to the Content-Type it represents
 const extToType = {
   '.txt': 'text/plain',
@@ -226,6 +229,7 @@ module.exports = {
   convertFragment,
   convert,
   ConversionLimitError,
+  MAX_WIDTH,
   extToType,
   imageTypes,
   PDF,
