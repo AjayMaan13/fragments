@@ -46,12 +46,56 @@ const sharpFormatByType = {
   'image/gif': 'gif',
 };
 
+// Protection for the small (0.25 vCPU / 512 MB) production task. Load tests
+// showed two ways to kill it (docs/perf/baseline.md): one image with a huge
+// pixel count, and many image conversions running at once. Both are limited here.
+//
+// A decoded image costs memory per *pixel*, not per byte, and a few hundred KB
+// of PNG can hold hundreds of megapixels. 16 MP covers ordinary photos
+// (a 12 MP phone camera) well inside the task's memory; tune with the env vars.
+const maxImagePixels = () => Number(process.env.MAX_IMAGE_PIXELS) || 16_000_000;
+// Image conversions allowed to run at once; beyond this we answer 503 instead of queueing
+const maxConcurrentImages = () => Number(process.env.MAX_CONCURRENT_IMAGE_CONVERSIONS) || 2;
+let imageConversionsInFlight = 0;
+
+// A conversion we refuse on purpose (not a crash). `status` is the HTTP status
+// the route should answer with; `retryAfter` (seconds) is set when retrying later can work.
+class ConversionLimitError extends Error {
+  constructor(message, status, retryAfter) {
+    super(message);
+    this.name = 'ConversionLimitError';
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
+
 // Convert image bytes to the target type, optionally shrinking to `width`
 // pixels wide (aspect ratio kept; never enlarged).
-const transformImage = (data, targetType, width) => {
-  const pipeline = sharp(data);
-  if (width) pipeline.resize({ width, withoutEnlargement: true });
-  return pipeline.toFormat(sharpFormatByType[targetType]).toBuffer();
+const transformImage = async (data, targetType, width) => {
+  if (imageConversionsInFlight >= maxConcurrentImages()) {
+    throw new ConversionLimitError('Busy converting other images, try again shortly', 503, 5);
+  }
+  imageConversionsInFlight++;
+  try {
+    // Reading the size only parses the header; it does not decode the pixels.
+    // (An animated image reports its frames stacked: use the height of one frame.)
+    const meta = await sharp(data, { limitInputPixels: false }).metadata();
+    const pixels = (meta.width || 0) * (meta.pageHeight || meta.height || 0);
+    const limit = maxImagePixels();
+    if (pixels > limit) {
+      throw new ConversionLimitError(
+        `Image is too large to convert (${meta.width}x${meta.pageHeight || meta.height}); the limit is ${limit / 1e6} megapixels`,
+        422
+      );
+    }
+
+    // limitInputPixels again as a second line of defence inside sharp itself
+    const pipeline = sharp(data, { limitInputPixels: limit });
+    if (width) pipeline.resize({ width, withoutEnlargement: true });
+    return await pipeline.toFormat(sharpFormatByType[targetType]).toBuffer();
+  } finally {
+    imageConversionsInFlight--;
+  }
 };
 
 // Flatten text into simple blocks - { text, level?, list?, code? } - that both
@@ -178,4 +222,12 @@ async function convertFragment(data, from, to, { width } = {}) {
   if (to === 'text/plain') return data;
 }
 
-module.exports = { convertFragment, convert, extToType, imageTypes, PDF, DOCX };
+module.exports = {
+  convertFragment,
+  convert,
+  ConversionLimitError,
+  extToType,
+  imageTypes,
+  PDF,
+  DOCX,
+};

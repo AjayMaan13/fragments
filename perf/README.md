@@ -81,9 +81,9 @@ k6 run perf/smoke.js
 # Experiment 1: cheap reads only, find the knee
 READ_PCT=100 CONVERT_PCT=0 IMAGE_PCT=0 RATES=5,10,20,40,80 \
   k6 run --summary-export=perf/results/exp1-reads.json perf/mixed.js
-# Experiment 2: with vs without heavy conversions, same read rate
+# Experiment 2: with vs without heavy conversions, same 16 reads/s in both runs
 RATES=20 STEP_SECONDS=180 k6 run --summary-export=perf/results/exp2-mixed.json perf/mixed.js
-READ_PCT=100 CONVERT_PCT=0 IMAGE_PCT=0 RATES=20 STEP_SECONDS=180 \
+READ_PCT=100 CONVERT_PCT=0 IMAGE_PCT=0 RATES=16 STEP_SECONDS=180 \
   k6 run --summary-export=perf/results/exp2-reads-only.json perf/mixed.js
 ```
 

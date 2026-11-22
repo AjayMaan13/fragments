@@ -13,8 +13,8 @@
 //   1. Cheap reads only, find the knee:
 //        READ_PCT=100 CONVERT_PCT=0 IMAGE_PCT=0 RATES=5,10,20,40,80 k6 run perf/mixed.js
 //   2. Same read rate with and without heavy work, compare read p95:
-//        RATES=20 STEP_SECONDS=180 k6 run perf/mixed.js                              (80/15/5)
-//        READ_PCT=100 CONVERT_PCT=0 IMAGE_PCT=0 RATES=20 STEP_SECONDS=180 k6 run perf/mixed.js
+//        RATES=20 STEP_SECONDS=180 k6 run perf/mixed.js                              (80/15/5: 16 reads/s)
+//        READ_PCT=100 CONVERT_PCT=0 IMAGE_PCT=0 RATES=16 STEP_SECONDS=180 k6 run perf/mixed.js
 //
 // Needs perf/fixtures/heavy.jpg: run `node perf/make-fixtures.js` first.
 //

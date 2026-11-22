@@ -7,7 +7,7 @@ Terraform module: `infra/modules/observability`. Created and destroyed with the 
 | Thing | Where | Notes |
 |---|---|---|
 | Dashboard `fragments-overview` | CloudWatch (`terraform output dashboard_url`) | Requests, 5xx, p50/p95/p99 latency, healthy/unhealthy targets, ECS CPU and memory, conversion duration by target type, recent errors |
-| Alarms (4) | CloudWatch, notify SNS topic `fragments-alarms` | `5xx-rate`, `p95-latency`, `unhealthy-hosts`, `ecs-memory` |
+| Alarms (4) | CloudWatch, notify SNS topic `fragments-alarms` | `5xx-rate` (app 5xx plus load-balancer-generated 5xx), `p95-latency`, `unhealthy-hosts`, `ecs-memory` |
 | `ConversionDuration` metric | namespace `Fragments`, dimension `TargetType` | Written as Embedded Metric Format log lines by `src/metrics.js` (no PutMetricData, no IAM change) |
 | Request IDs | `X-Request-Id` header, `req.id` on every log line | Honors a valid incoming id, otherwise generates a UUID (`src/request-id.js`) |
 
@@ -47,8 +47,8 @@ is measured with k6 rather than read off the dashboard.
 
 ## Known limits
 
-- `terraform validate` and an offline plan of this module pass, but the dashboard and alarms have
-  **not yet been applied to AWS**. The first `terraform apply` is the real test of the dashboard JSON
-  and of the error-rate metric math.
+- The `ecs-memory` alarm is slow: ECS metrics reach CloudWatch a few minutes late, so in the load tests it fired about 3 minutes after the task had already been OOM-killed. It reports a memory problem; it cannot prevent one. The limits in `src/convert.js` are what protect the task.
+- The `5xx-rate` alarm originally counted only app (target) 5xx and stayed silent while the load balancer returned hundreds of 5xx during an overload. It now counts both (changed after the load tests; not yet re-verified on AWS).
+- The dashboard and the original four alarms were applied to AWS on 2026-11-22 and worked: AWS accepted the dashboard JSON, the `ConversionDuration` metric appeared for pdf and docx, and the `p95-latency` and `ecs-memory` alarms fired during load tests. Only the widened `5xx-rate` expression is still unverified on AWS.
 - EMF metrics are emitted at log level `info`; `FRAGMENTS_LOG_LEVEL=warn` or higher switches them off.
 - Alarms use `treat_missing_data = notBreaching`, so an idle or scaled-to-zero service does not alarm.

@@ -34,12 +34,15 @@ resource "aws_sns_topic_subscription" "email" {
 # between sessions and idle most of the time, and "no traffic" is not a failure.
 ###############################################################################
 
-# 5xx *rate*, not count, so it scales with traffic. The IF() ignores minutes
-# with only a handful of requests. FILL(..., 0) because CloudWatch publishes no
-# datapoint at all for a metric that is zero.
+# 5xx *rate*, not count, so it scales with traffic. Counts BOTH 5xx from the app
+# (target) and 5xx the load balancer makes itself (502/503/504 when no target is
+# healthy or a target times out): under overload (docs/perf/baseline.md) the app
+# returned none while the load balancer returned hundreds. The IF() ignores
+# minutes with only a handful of requests. FILL(..., 0) because CloudWatch
+# publishes no datapoint at all for a metric that is zero.
 resource "aws_cloudwatch_metric_alarm" "error_rate" {
   alarm_name          = "${var.project_name}-5xx-rate"
-  alarm_description   = "More than ${var.error_rate_threshold_percent}% of requests are failing with a 5xx from the app (min ${var.min_requests_for_error_rate} requests/minute)."
+  alarm_description   = "More than ${var.error_rate_threshold_percent}% of requests are failing with a 5xx, from the app or from the load balancer (min ${var.min_requests_for_error_rate} requests/minute)."
   comparison_operator = "GreaterThanThreshold"
   threshold           = var.error_rate_threshold_percent
   evaluation_periods  = 3
@@ -61,7 +64,7 @@ resource "aws_cloudwatch_metric_alarm" "error_rate" {
   }
 
   metric_query {
-    id          = "errors"
+    id          = "target_errors"
     return_data = false
     metric {
       namespace   = "AWS/ApplicationELB"
@@ -73,9 +76,21 @@ resource "aws_cloudwatch_metric_alarm" "error_rate" {
   }
 
   metric_query {
+    id          = "elb_errors"
+    return_data = false
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "HTTPCode_ELB_5XX_Count"
+      period      = 60
+      stat        = "Sum"
+      dimensions  = { LoadBalancer = var.alb_arn_suffix }
+    }
+  }
+
+  metric_query {
     id          = "rate"
     label       = "5xx rate (%)"
-    expression  = "IF(requests > ${var.min_requests_for_error_rate}, 100 * FILL(errors, 0) / requests, 0)"
+    expression  = "IF(requests > ${var.min_requests_for_error_rate}, 100 * (FILL(target_errors, 0) + FILL(elb_errors, 0)) / requests, 0)"
     return_data = true
   }
 }

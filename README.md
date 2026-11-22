@@ -167,6 +167,7 @@ All `/v1/*` routes require authentication (HTTP Basic locally, or a Cognito bear
 - **Expiry is enforced on read.** DynamoDB's TTL can take up to about 48 hours to delete a record, so the API treats an expired fragment as missing immediately; the S3 data is then removed by the cleanup Lambda.
 - **Share links are capped at 1 hour.** They are signed with the task role's temporary credentials, which rotate. Shared reads go straight to S3, so they are not counted as views.
 - **PDFs are Latin-text only.** The built-in PDF fonts cover Latin characters; other scripts and emoji do not render. Bold, italics, and links in markdown are flattened to plain text.
+- **Image conversion is bounded.** Images over 16 megapixels are refused with `422`, and at most 2 image conversions run at once (extra requests get `503` + `Retry-After`). A single 1080p JPEG to AVIF conversion takes about 33 s on the 0.25 vCPU task, so heavy conversions are not a good fit for the synchronous API.
 - **PDF and Word are output formats.** They can be produced from markdown or plain text, but not uploaded as fragments.
 - **On-demand deployment.** The load balancer and Fargate task cost money while running, so the intended workflow is `terraform apply` to work and `terraform destroy -target=module.ecs -target=module.alb` when done.
 
@@ -269,3 +270,5 @@ npm run test:integration  # Hurl integration tests (requires the Docker Compose 
 | `AWS_S3_BUCKET_NAME` / `AWS_DYNAMODB_TABLE_NAME` | Target AWS storage resources |
 | `API_URL` | Used to build the `Location` header on fragment creation |
 | `FRAGMENTS_LOG_LEVEL` | Pino log level (`info` in production, `debug` for troubleshooting) |
+| `MAX_IMAGE_PIXELS` | Largest image (width x height) that will be converted or resized (default 16,000,000). Larger images are refused with `422`; found by load testing, see `docs/perf/baseline.md` |
+| `MAX_CONCURRENT_IMAGE_CONVERSIONS` | Image conversions allowed at once (default `2`). Extra requests get `503` with `Retry-After` |

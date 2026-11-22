@@ -4,10 +4,22 @@ const path = require('path');
 const { Fragment } = require('../../model/fragment');
 const { createErrorResponse } = require('../../response');
 const logger = require('../../logger');
-const { convertFragment, extToType, imageTypes } = require('../../convert');
+const { convertFragment, ConversionLimitError, extToType, imageTypes } = require('../../convert');
 const { timeConversion } = require('../../metrics');
 
 const MAX_WIDTH = 4096;
+
+// A conversion we refused on purpose (image too big, server busy) gets its own
+// status; anything else that went wrong is a 500 with the given message.
+const sendConversionError = (res, err, id, fallbackMessage) => {
+  if (err instanceof ConversionLimitError) {
+    logger.warn({ id, status: err.status }, err.message);
+    if (err.retryAfter) res.setHeader('Retry-After', String(err.retryAfter));
+    return res.status(err.status).json(createErrorResponse(err.status, err.message));
+  }
+  logger.error({ err, id }, fallbackMessage);
+  return res.status(500).json(createErrorResponse(500, fallbackMessage));
+};
 
 // Get an authenticated user's fragment data by id, optionally converted
 // to another supported type via an extension (e.g. ".html"). Images can also be
@@ -58,8 +70,7 @@ module.exports = async (req, res) => {
       );
       return res.status(200).send(resized);
     } catch (err) {
-      logger.error({ err, id, width }, 'Error resizing fragment');
-      return res.status(500).json(createErrorResponse(500, 'Unable to resize fragment'));
+      return sendConversionError(res, err, id, 'Unable to resize fragment');
     }
   }
 
@@ -87,7 +98,6 @@ module.exports = async (req, res) => {
       .status(415)
       .json(createErrorResponse(415, `Cannot convert ${fragment.type} to ${ext}`));
   } catch (err) {
-    logger.error({ err, id, ext }, 'Error converting fragment');
-    return res.status(500).json(createErrorResponse(500, 'Unable to convert fragment'));
+    return sendConversionError(res, err, id, 'Unable to convert fragment');
   }
 };
