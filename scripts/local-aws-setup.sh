@@ -30,7 +30,9 @@ echo 'MiniStack SQS Ready'
 
 # Create our S3 bucket with MiniStack
 echo "Creating MiniStack S3 bucket: fragments"
-aws --endpoint-url=http://localhost:4566 s3api create-bucket --bucket fragments
+# Outside us-east-1 S3 requires the region as a location constraint (newer MiniStack enforces it)
+aws --endpoint-url=http://localhost:4566 s3api create-bucket --bucket fragments \
+    --create-bucket-configuration LocationConstraint=us-east-2
 
 # Setup DynamoDB Table with dynamodb-local, see:
 # https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/getting-started-step-1.html
