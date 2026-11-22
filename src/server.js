@@ -20,5 +20,14 @@ const server = stoppable(
   })
 );
 
+// Behind an AWS load balancer, Node must keep idle connections open LONGER than
+// the load balancer does (its idle timeout is 60 s). Node's default is 5 s, so
+// the server can close a connection just as the load balancer reuses it, which
+// shows up as a rare ALB-generated 502 with nothing in the app logs. Load testing
+// saw one such 5xx in 10,462 requests (docs/perf/baseline.md); this is the
+// standard remedy, not yet proven to be the cause. headersTimeout must stay above it.
+server.keepAliveTimeout = 65 * 1000;
+server.headersTimeout = 66 * 1000;
+
 // Export our server instance so other parts of our code can access it if necessary.
 module.exports = server;

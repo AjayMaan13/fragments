@@ -1,0 +1,146 @@
+// perf/mixed.js
+// Open-model load: requests arrive at a fixed rate whether or not the server
+// keeps up (ramping-arrival-rate), which is what exposes queueing and latency
+// growth. A staircase of request rates, held for a while each, shows where the
+// service stops coping.
+//
+// Request mix (percent, override with env; they are weights, not required to sum to 100):
+//   READ_PCT=80     cheap reads: GET data, GET /info, GET list
+//   CONVERT_PCT=15  small conversions: markdown -> pdf / docx
+//   IMAGE_PCT=5     heavy conversion: ~2 MP jpeg -> avif
+//
+// Experiments (see docs/perf/baseline.md):
+//   1. Cheap reads only, find the knee:
+//        READ_PCT=100 CONVERT_PCT=0 IMAGE_PCT=0 RATES=5,10,20,40,80 k6 run perf/mixed.js
+//   2. Same read rate with and without heavy work, compare read p95:
+//        RATES=20 STEP_SECONDS=180 k6 run perf/mixed.js                              (80/15/5: 16 reads/s)
+//        READ_PCT=100 CONVERT_PCT=0 IMAGE_PCT=0 RATES=16 STEP_SECONDS=180 k6 run perf/mixed.js
+//
+// Needs perf/fixtures/heavy.jpg: run `node perf/make-fixtures.js` first.
+//
+// Every request is tagged kind=read|convert|image and step=s0,s1,... (one per
+// entry in RATES), so the summary reports each rate step separately.
+
+import http from 'k6/http';
+import { check } from 'k6';
+import exec from 'k6/execution';
+import {
+  BASE_URL,
+  authorization,
+  waitForApi,
+  createFragment,
+  deleteFragment,
+} from './lib/common.js';
+
+const HEAVY_IMAGE = open('./fixtures/heavy.jpg', 'b');
+const MARKDOWN = `# Load test document
+
+Some **bold** text, a list:
+
+- one
+- two
+- three
+
+\`\`\`
+code block
+\`\`\`
+`;
+
+const READ = Number(__ENV.READ_PCT || 80);
+const CONVERT = Number(__ENV.CONVERT_PCT || 15);
+const IMAGE = Number(__ENV.IMAGE_PCT || 5);
+const TOTAL = READ + CONVERT + IMAGE;
+
+// Requests per second at each step, e.g. RATES=5,10,20
+const RATES = (__ENV.RATES || '5,10,20,40').split(',').map(Number);
+const RAMP_SECONDS = Number(__ENV.RAMP_SECONDS || 10);
+const STEP_SECONDS = Number(__ENV.STEP_SECONDS || 60);
+const STEP_LENGTH_MS = (RAMP_SECONDS + STEP_SECONDS) * 1000;
+
+const stages = [];
+for (const target of RATES) {
+  stages.push({ target, duration: `${RAMP_SECONDS}s` });
+  stages.push({ target, duration: `${STEP_SECONDS}s` });
+}
+
+// k6 only prints sub-metrics (per tag) that a threshold mentions, so add an
+// always-true threshold per step to get a p95 and error rate for each step.
+const thresholds = {
+  http_req_failed: ['rate<0.01'],
+  // First-guess target for cheap reads; replace once the baseline is measured
+  'http_req_duration{kind:read}': ['p(95)<500'],
+};
+RATES.forEach((_, i) => {
+  thresholds[`http_req_duration{kind:read,step:s${i}}`] = ['p(95)>=0'];
+  thresholds[`http_req_failed{step:s${i}}`] = ['rate>=0'];
+  thresholds[`http_req_duration{kind:convert,step:s${i}}`] = ['p(95)>=0'];
+  thresholds[`http_req_duration{kind:image,step:s${i}}`] = ['p(95)>=0'];
+});
+
+export const options = {
+  scenarios: {
+    mixed: {
+      executor: 'ramping-arrival-rate',
+      startRate: 1,
+      timeUnit: '1s',
+      preAllocatedVUs: Number(__ENV.PRE_VUS || 50),
+      maxVUs: Number(__ENV.MAX_VUS || 400),
+      stages,
+    },
+  },
+  thresholds,
+  summaryTrendStats: ['avg', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
+};
+
+export function setup() {
+  waitForApi();
+  const auth = authorization();
+  return {
+    auth,
+    textId: createFragment(auth, 'text/plain', 'hello from the load test'),
+    mdId: createFragment(auth, 'text/markdown', MARKDOWN),
+    imageId: createFragment(auth, 'image/jpeg', HEAVY_IMAGE),
+  };
+}
+
+export function teardown(data) {
+  for (const id of [data.textId, data.mdId, data.imageId]) deleteFragment(data.auth, id);
+}
+
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+export default function (data) {
+  const headers = { Authorization: data.auth };
+  const step = `s${Math.min(
+    Math.floor(exec.instance.currentTestRunDuration / STEP_LENGTH_MS),
+    RATES.length - 1
+  )}`;
+
+  const roll = Math.random() * TOTAL;
+
+  if (roll < READ) {
+    const read = pick([
+      { name: 'GET /v1/fragments/:id', path: `/v1/fragments/${data.textId}` },
+      { name: 'GET /v1/fragments/:id/info', path: `/v1/fragments/${data.textId}/info` },
+      { name: 'GET /v1/fragments', path: '/v1/fragments' },
+    ]);
+    const res = http.get(`${BASE_URL}${read.path}`, {
+      headers,
+      tags: { name: read.name, kind: 'read', step },
+    });
+    check(res, { 'read -> 200': (r) => r.status === 200 });
+  } else if (roll < READ + CONVERT) {
+    const ext = pick(['pdf', 'docx']);
+    const res = http.get(`${BASE_URL}/v1/fragments/${data.mdId}.${ext}`, {
+      headers,
+      tags: { name: `GET /v1/fragments/:id.${ext}`, kind: 'convert', step },
+    });
+    check(res, { 'convert -> 200': (r) => r.status === 200 });
+  } else {
+    const res = http.get(`${BASE_URL}/v1/fragments/${data.imageId}.avif`, {
+      headers,
+      tags: { name: 'GET /v1/fragments/:id.avif', kind: 'image', step },
+    });
+    check(res, { 'image convert -> 200': (r) => r.status === 200 });
+  }
+}

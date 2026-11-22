@@ -67,17 +67,13 @@ jobs:
           node-version: 'lts/*'
           cache: 'npm'
 
-      - name: Install node dependencies and run Tests
-        # There are two ways we could do this:
-        #
-        # 1. Call `npm ci` followed by `npm test` like so (NOTE: the use of | and -):
-        # run: |
-        # - npm install
-        # - npm test
-        #
-        # 2. Use `install-ci-test` to do it in a single command, see https://docs.npmjs.com/cli/v8/commands/npm-install-ci-test
-        # run: npm install-ci-test
-        run: npm install-ci-test
+      - name: Install node dependencies
+        run: npm ci
+
+      # `npm test` doesn't collect coverage, so jest.config.js's 80% line
+      # threshold would never be checked. `npm run coverage` enforces it.
+      - name: Run tests with coverage (enforces the 80% threshold)
+        run: npm run coverage
 
   integration-tests:
     name: Integration Tests
@@ -101,6 +97,34 @@ jobs:
         run: ./scripts/local-aws-setup.sh
       - name: Run Hurl Tests
         run: npm run test:integration
+
+  # Smoke-load the API with k6 against the same docker compose stack the Hurl
+  # tests use. Only a smoke test with generous thresholds: GitHub runners are too
+  # noisy for tight latency gates. Real measurements are manual (perf/README.md).
+  perf-smoke:
+    name: k6 Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - name: Build Containers
+        run: docker compose up -d
+      - name: Setup Local AWS Resources
+        run: ./scripts/local-aws-setup.sh
+      # https://github.com/grafana/setup-k6-action
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+      - name: Run k6 smoke test
+        run: |
+          mkdir -p perf/results
+          k6 run --summary-export=perf/results/smoke.json perf/smoke.js
+      - name: Upload k6 summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-smoke-summary
+          path: perf/results/smoke.json
+          if-no-files-found: ignore
 
   # Checks the Terraform in infra/ is formatted and valid. Needs no AWS
   # credentials or state: -backend=false only downloads the providers.

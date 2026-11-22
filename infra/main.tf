@@ -38,8 +38,9 @@ module "alb" {
 module "auth" {
   source = "./modules/auth"
 
-  project_name  = var.project_name
-  callback_urls = var.ui_callback_urls
+  project_name         = var.project_name
+  callback_urls        = var.ui_callback_urls
+  enable_password_auth = var.enable_password_auth
 }
 
 module "ecs" {
@@ -80,4 +81,17 @@ module "cicd" {
   ecs_cluster_name   = "${var.project_name}-cluster"
   ecs_service_name   = "${var.project_name}-service"
   task_role_arns     = [module.iam.task_execution_role_arn, module.iam.task_role_arn]
+}
+
+module "observability" {
+  source = "./modules/observability"
+
+  project_name            = var.project_name
+  aws_region              = var.aws_region
+  alb_arn_suffix          = module.alb.lb_arn_suffix
+  target_group_arn_suffix = module.alb.target_group_arn_suffix
+  ecs_cluster_name        = module.ecs.cluster_name
+  ecs_service_name        = module.ecs.service_name
+  log_group_name          = module.ecs.log_group_name
+  alarm_email             = var.alarm_email
 }

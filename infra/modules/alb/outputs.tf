@@ -10,3 +10,13 @@ output "target_group_arn" {
   # through a module boundary, so we state it here.
   depends_on = [aws_lb_listener.http]
 }
+
+# CloudWatch identifies load balancers and target groups by the tail of their
+# ARN, not the full ARN or the name.
+output "lb_arn_suffix" {
+  value = aws_lb.this.arn_suffix
+}
+
+output "target_group_arn_suffix" {
+  value = aws_lb_target_group.this.arn_suffix
+}

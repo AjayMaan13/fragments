@@ -52,7 +52,8 @@ module.exports.strategy = () =>
       // Create a user, but only bother with their email.
       done(null, user.email);
     } catch (err) {
-      logger.error({ err, token }, 'could not verify token');
+      // Never log the token itself: it is a live credential and would end up in CloudWatch
+      logger.error({ err }, 'could not verify token');
       done(null, false);
     }
   });
