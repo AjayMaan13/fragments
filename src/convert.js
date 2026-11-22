@@ -1,14 +1,58 @@
 // src/convert.js
 
-// Conversions that produce new formats: XML <-> JSON, and markdown/plain text
-// -> PDF or DOCX. The libraries are loaded on first use, not at startup.
+// All fragment conversions live here, behind one entry point: convertFragment().
+// The request handler (and, later, a queue worker) calls that and nothing else.
+// The heavier output libraries (pdfkit, docx, fast-xml-parser) are loaded on
+// first use, not at startup.
 
 const MarkdownIt = require('markdown-it');
+const yaml = require('js-yaml');
+const csvtojson = require('csvtojson');
+const sharp = require('sharp');
 
 const md = new MarkdownIt();
 
 const PDF = 'application/pdf';
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+// Map a URL extension to the Content-Type it represents
+const extToType = {
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+  '.html': 'text/html',
+  '.csv': 'text/csv',
+  '.json': 'application/json',
+  '.yaml': 'application/yaml',
+  '.yml': 'application/yaml',
+  '.xml': 'application/xml',
+  '.pdf': PDF,
+  '.docx': DOCX,
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.gif': 'image/gif',
+};
+
+const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'];
+
+// Map an image Content-Type to the format name sharp expects
+const sharpFormatByType = {
+  'image/png': 'png',
+  'image/jpeg': 'jpeg',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+  'image/gif': 'gif',
+};
+
+// Convert image bytes to the target type, optionally shrinking to `width`
+// pixels wide (aspect ratio kept; never enlarged).
+const transformImage = (data, targetType, width) => {
+  const pipeline = sharp(data);
+  if (width) pipeline.resize({ width, withoutEnlargement: true });
+  return pipeline.toFormat(sharpFormatByType[targetType]).toBuffer();
+};
 
 // Flatten text into simple blocks - { text, level?, list?, code? } - that both
 // document renderers draw the same way.
@@ -103,4 +147,35 @@ async function convert(data, from, to) {
   if (from === 'application/json' && to === 'application/xml') return jsonToXml(data);
 }
 
-module.exports = { convert, PDF, DOCX };
+// The single conversion entry point. Converts `data` of type `from` (a bare
+// MIME type, no charset) into type `to`; images can also be shrunk to
+// `options.width` pixels. Resolves to the converted Buffer/string, or
+// undefined when there is no such conversion. Throws if the data can't be
+// parsed or encoded (bad JSON, corrupt image...).
+async function convertFragment(data, from, to, { width } = {}) {
+  // Same type: nothing to convert, except an image may still be resized
+  if (to === from)
+    return width && imageTypes.includes(from) ? transformImage(data, to, width) : data;
+
+  if (from === 'text/markdown' && to === 'text/html') return md.render(data.toString());
+
+  if (from === 'application/json' && to === 'application/yaml') {
+    return yaml.dump(JSON.parse(data.toString()));
+  }
+
+  if (from === 'text/csv' && to === 'application/json') {
+    return JSON.stringify(await csvtojson().fromString(data.toString()));
+  }
+
+  // image -> image (any supported pair)
+  if (imageTypes.includes(from) && imageTypes.includes(to)) return transformImage(data, to, width);
+
+  // xml <-> json, markdown/text -> pdf/docx
+  const converted = await convert(data, from, to);
+  if (converted !== undefined) return converted;
+
+  // Fallback: any supported text-ish type -> text/plain is just the raw bytes as text
+  if (to === 'text/plain') return data;
+}
+
+module.exports = { convertFragment, convert, extToType, imageTypes, PDF, DOCX };

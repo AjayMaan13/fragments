@@ -6,3 +6,7 @@ node_modules/
 # Generated test coverage reports
 coverage/
 ccp555-key-pair.pem
+
+# Generated load-test fixtures and raw k6 output (curated results go in docs/perf/)
+perf/fixtures/
+perf/results/

@@ -47,3 +47,13 @@ output "github_deploy_role_arn" {
   description = "Set as the AWS_DEPLOY_ROLE_ARN variable in the GitHub repo (used by cd.yml)"
   value       = module.cicd.deploy_role_arn
 }
+
+output "dashboard_url" {
+  description = "CloudWatch dashboard (service levels, latency, errors, ECS CPU/memory)"
+  value       = "https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards/dashboard/${module.observability.dashboard_name}"
+}
+
+output "alarm_names" {
+  description = "CloudWatch alarms that notify the SNS topic"
+  value       = module.observability.alarm_names
+}

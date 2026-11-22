@@ -1,57 +1,13 @@
 // src/routes/api/getId.js
 
 const path = require('path');
-const MarkdownIt = require('markdown-it');
-const yaml = require('js-yaml');
-const csvtojson = require('csvtojson');
-const sharp = require('sharp');
 const { Fragment } = require('../../model/fragment');
 const { createErrorResponse } = require('../../response');
 const logger = require('../../logger');
-const { convert, PDF, DOCX } = require('../../convert');
-
-const md = new MarkdownIt();
-
-// Map a URL extension to the Content-Type it represents
-const extToType = {
-  '.txt': 'text/plain',
-  '.md': 'text/markdown',
-  '.html': 'text/html',
-  '.csv': 'text/csv',
-  '.json': 'application/json',
-  '.yaml': 'application/yaml',
-  '.yml': 'application/yaml',
-  '.xml': 'application/xml',
-  '.pdf': PDF,
-  '.docx': DOCX,
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.avif': 'image/avif',
-  '.gif': 'image/gif',
-};
-
-const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'];
-
-// Map an image Content-Type to the format name sharp expects
-const sharpFormatByType = {
-  'image/png': 'png',
-  'image/jpeg': 'jpeg',
-  'image/webp': 'webp',
-  'image/avif': 'avif',
-  'image/gif': 'gif',
-};
+const { convertFragment, extToType, imageTypes } = require('../../convert');
+const { timeConversion } = require('../../metrics');
 
 const MAX_WIDTH = 4096;
-
-// Convert image bytes to the target type, optionally shrinking to `width`
-// pixels wide (aspect ratio kept; never enlarged).
-const transformImage = (data, targetType, width) => {
-  const pipeline = sharp(data);
-  if (width) pipeline.resize({ width, withoutEnlargement: true });
-  return pipeline.toFormat(sharpFormatByType[targetType]).toBuffer();
-};
 
 // Get an authenticated user's fragment data by id, optionally converted
 // to another supported type via an extension (e.g. ".html"). Images can also be
@@ -97,7 +53,10 @@ module.exports = async (req, res) => {
     res.setHeader('Content-Type', fragment.type);
     if (!width) return res.status(200).send(data);
     try {
-      return res.status(200).send(await transformImage(data, fragment.mimeType, width));
+      const resized = await timeConversion(fragment.mimeType, () =>
+        convertFragment(data, fragment.mimeType, fragment.mimeType, { width })
+      );
+      return res.status(200).send(resized);
     } catch (err) {
       logger.error({ err, id, width }, 'Error resizing fragment');
       return res.status(500).json(createErrorResponse(500, 'Unable to resize fragment'));
@@ -113,51 +72,14 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Requested extension matches the fragment's own type: return the raw data
-    if (targetType === fragment.mimeType) {
-      res.setHeader('Content-Type', fragment.type);
-      return res.status(200).send(width ? await transformImage(data, targetType, width) : data);
-    }
-
-    // markdown -> html
-    if (fragment.mimeType === 'text/markdown' && targetType === 'text/html') {
-      const html = md.render(data.toString());
-      res.setHeader('Content-Type', 'text/html');
-      return res.status(200).send(html);
-    }
-
-    // json -> yaml
-    if (fragment.mimeType === 'application/json' && targetType === 'application/yaml') {
-      const yamlStr = yaml.dump(JSON.parse(data.toString()));
-      res.setHeader('Content-Type', 'application/yaml');
-      return res.status(200).send(yamlStr);
-    }
-
-    // csv -> json
-    if (fragment.mimeType === 'text/csv' && targetType === 'application/json') {
-      const rows = await csvtojson().fromString(data.toString());
-      res.setHeader('Content-Type', 'application/json');
-      return res.status(200).send(JSON.stringify(rows));
-    }
-
-    // image -> image (any supported pair)
-    if (imageTypes.includes(fragment.mimeType) && imageTypes.includes(targetType)) {
-      const converted = await transformImage(data, targetType, width);
-      res.setHeader('Content-Type', targetType);
-      return res.status(200).send(converted);
-    }
-
-    // xml <-> json, markdown/text -> pdf/docx
-    const converted = await convert(data, fragment.mimeType, targetType);
+    const convertIt = () => convertFragment(data, fragment.mimeType, targetType, { width });
+    // Only time real work: handing back the same bytes unchanged isn't a conversion
+    const doesWork = targetType !== fragment.mimeType || Boolean(width);
+    const converted = doesWork ? await timeConversion(targetType, convertIt) : await convertIt();
     if (converted !== undefined) {
-      res.setHeader('Content-Type', targetType);
+      // Same type as the fragment: keep its full Content-Type (charset and all)
+      res.setHeader('Content-Type', targetType === fragment.mimeType ? fragment.type : targetType);
       return res.status(200).send(converted);
-    }
-
-    // Fallback: any supported text-ish type -> text/plain is just the raw bytes as text
-    if (targetType === 'text/plain') {
-      res.setHeader('Content-Type', 'text/plain');
-      return res.status(200).send(data);
     }
 
     logger.warn({ id, ext, fragmentType: fragment.type }, 'Unsupported conversion requested');

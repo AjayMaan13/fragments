@@ -33,3 +33,15 @@ variable "project_name" {
   type        = string
   default     = "fragments"
 }
+
+variable "alarm_email" {
+  description = "Email for CloudWatch alarm notifications. Empty = alarms exist but notify nobody. Confirm the SNS subscription email AWS sends."
+  type        = string
+  default     = ""
+}
+
+variable "enable_password_auth" {
+  description = "Allow username/password login for scripts (k6 load tests). Keep false otherwise; set true only for the duration of a test."
+  type        = bool
+  default     = false
+}

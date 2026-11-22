@@ -48,7 +48,12 @@ resource "aws_cognito_user_pool_client" "this" {
   callback_urls = var.callback_urls
   logout_urls   = var.callback_urls
 
-  explicit_auth_flows = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
+  # USER_PASSWORD_AUTH sends the password to Cognito directly, so it is off
+  # unless enable_password_auth is set (for load testing; see perf/README.md).
+  explicit_auth_flows = concat(
+    ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"],
+    var.enable_password_auth ? ["ALLOW_USER_PASSWORD_AUTH"] : []
+  )
 
   prevent_user_existence_errors = "ENABLED"
 }

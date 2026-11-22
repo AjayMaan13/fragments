@@ -10,3 +10,5 @@ eslint.config.mjs
 .gitignore
 .prettier*
 jest*
+perf/
+docs/

@@ -134,7 +134,7 @@ sequenceDiagram
 
 ## Engineering highlights
 
-- **~95% line test coverage** — 195 unit tests plus 14 Hurl integration test files covering every route, every conversion path, and both success and error cases
+- **94.69% line test coverage, enforced in CI (80% minimum)** — 226 unit tests plus 14 Hurl integration test files covering every route, every conversion path, and both success and error cases
 - **Everything as code** — every AWS resource is defined in Terraform, so the whole environment can be created, or destroyed to stop billing, with one command; CI/CD only ships images
 - **No long-lived credentials in CI** — GitHub Actions assumes a least-privilege IAM role through OIDC, limited to this repository's version tags
 - **Least-privilege IAM** — the running container can touch only its own S3 bucket and DynamoDB table, and only with the operations the code uses
@@ -175,10 +175,12 @@ All `/v1/*` routes require authentication (HTTP Basic locally, or a Cognito bear
 ```
 src/                 Express API (routes, model, auth, data backends, conversions)
 tests/unit/          Jest unit tests          tests/integration/   Hurl HTTP tests
-infra/               Terraform: root config + 9 modules (network, alb, ecs, ecr, iam,
-                     storage, auth, events (Lambda), cicd (GitHub OIDC role))
+infra/               Terraform: root config + 10 modules (network, alb, ecs, ecr, iam,
+                     storage, auth, events (Lambda), cicd (GitHub OIDC role),
+                     observability (dashboard, alarms))
+perf/                k6 load tests (smoke + mixed-load staircase), see perf/README.md
 .github/workflows/   ci.yml (tests, lint, terraform validate) and cd.yml (deploy on tag)
-docs/                Planning notes
+docs/                observability.md, perf/ (load-test results), UPGRADE_PLAN.md
 ```
 
 ---
@@ -193,7 +195,7 @@ All infrastructure is defined in `infra/` (Terraform); CI/CD only ships new imag
 4. Push a version tag (`npm version patch && git push --follow-tags`). The `cd` workflow builds and pushes the image to ECR and deploys it.
 5. `terraform apply -var desired_count=1` starts the service. Copy `api_url` and the Cognito values from `terraform output` into `fragments-ui/.env`.
 
-To stop billing, `terraform destroy -target=module.ecs -target=module.alb` removes only the load balancer and service (data and users are kept); `terraform destroy` removes everything.
+To stop billing, `terraform destroy -target=module.ecs -target=module.alb` removes only the load balancer and service, plus the dashboard and alarms that depend on them (data and users are kept); `terraform destroy` removes everything.
 
 ---
 

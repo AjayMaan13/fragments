@@ -6,9 +6,12 @@ const helmet = require('helmet');
 const passport = require('passport');
 
 const logger = require('./logger');
+const { genReqId } = require('./request-id');
 const pino = require('pino-http')({
   // Use our default logger instance, which is already configured
   logger,
+  // Honor an incoming X-Request-Id (or make one) and return it on the response
+  genReqId,
 });
 
 const authenticate = require('./auth');
