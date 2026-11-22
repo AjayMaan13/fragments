@@ -22,6 +22,12 @@ until (curl --silent http://localhost:4566/_ministack/health | grep "\"s3\": \"\
 done
 echo 'MiniStack S3 Ready'
 
+echo 'Waiting for MiniStack SQS...'
+until (curl --silent http://localhost:4566/_ministack/health | grep "\"sqs\": \"\(running\|available\)\"" > /dev/null); do
+    sleep 5
+done
+echo 'MiniStack SQS Ready'
+
 # Create our S3 bucket with MiniStack
 echo "Creating MiniStack S3 bucket: fragments"
 aws --endpoint-url=http://localhost:4566 s3api create-bucket --bucket fragments
@@ -44,3 +50,27 @@ dynamodb create-table \
 # Wait until the Fragments table exists in dynamodb-local, so we can use it, see:
 # https://awscli.amazonaws.com/v2/documentation/api/latest/reference/dynamodb/wait/table-exists.html
 aws --endpoint-url=http://localhost:8000 dynamodb wait table-exists --table-name fragments
+
+# Async conversion jobs: a dead-letter queue, the jobs queue that feeds it after
+# 3 failed deliveries (same numbers as infra/modules/queue), and the jobs table.
+echo "Creating MiniStack SQS queues: fragments-jobs-dlq and fragments-jobs"
+aws --endpoint-url=http://localhost:4566 sqs create-queue --queue-name fragments-jobs-dlq
+DLQ_ARN=$(aws --endpoint-url=http://localhost:4566 sqs get-queue-attributes \
+    --queue-url http://localhost:4566/000000000000/fragments-jobs-dlq \
+    --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
+aws --endpoint-url=http://localhost:4566 sqs create-queue --queue-name fragments-jobs \
+    --attributes "{\"VisibilityTimeout\":\"120\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}"
+
+echo "Creating DynamoDB-Local DynamoDB table: fragments-jobs"
+aws --endpoint-url=http://localhost:8000 \
+dynamodb create-table \
+    --table-name fragments-jobs \
+    --attribute-definitions \
+        AttributeName=ownerId,AttributeType=S \
+        AttributeName=jobId,AttributeType=S \
+    --key-schema \
+        AttributeName=ownerId,KeyType=HASH \
+        AttributeName=jobId,KeyType=RANGE \
+    --provisioned-throughput \
+        ReadCapacityUnits=10,WriteCapacityUnits=5
+aws --endpoint-url=http://localhost:8000 dynamodb wait table-exists --table-name fragments-jobs

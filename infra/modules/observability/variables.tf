@@ -60,3 +60,23 @@ variable "memory_threshold_percent" {
   type        = number
   default     = 80
 }
+
+variable "queue_name" {
+  description = "Name of the jobs SQS queue (the CloudWatch QueueName dimension)"
+  type        = string
+}
+
+variable "dlq_name" {
+  description = "Name of the dead-letter queue"
+  type        = string
+}
+
+variable "worker_service_name" {
+  type = string
+}
+
+variable "queue_age_threshold_seconds" {
+  description = "Alarm when the oldest waiting job has been waiting longer than this (the worker is down or far behind)"
+  type        = number
+  default     = 600
+}

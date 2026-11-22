@@ -12,5 +12,7 @@ output "alarm_names" {
     aws_cloudwatch_metric_alarm.latency_p95.alarm_name,
     aws_cloudwatch_metric_alarm.unhealthy_hosts.alarm_name,
     aws_cloudwatch_metric_alarm.ecs_memory.alarm_name,
+    aws_cloudwatch_metric_alarm.dlq_depth.alarm_name,
+    aws_cloudwatch_metric_alarm.queue_age.alarm_name,
   ]
 }

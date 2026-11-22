@@ -45,3 +45,21 @@ variable "enable_password_auth" {
   type        = bool
   default     = false
 }
+
+variable "worker_desired_count" {
+  description = "Running queue workers. Keep 0 until an image with src/worker.js is pushed; the async jobs API needs at least 1."
+  type        = number
+  default     = 0
+}
+
+variable "worker_cpu" {
+  description = "Worker Fargate CPU units. Image conversion is CPU-bound (jpeg to avif took ~33 s on 256), so the worker gets more than the API."
+  type        = string
+  default     = "512"
+}
+
+variable "worker_memory" {
+  description = "Worker Fargate memory (MiB), a valid pairing for worker_cpu"
+  type        = string
+  default     = "1024"
+}

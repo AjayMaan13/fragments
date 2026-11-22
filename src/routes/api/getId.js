@@ -4,10 +4,14 @@ const path = require('path');
 const { Fragment } = require('../../model/fragment');
 const { createErrorResponse } = require('../../response');
 const logger = require('../../logger');
-const { convertFragment, ConversionLimitError, extToType, imageTypes } = require('../../convert');
+const {
+  convertFragment,
+  ConversionLimitError,
+  MAX_WIDTH,
+  extToType,
+  imageTypes,
+} = require('../../convert');
 const { timeConversion } = require('../../metrics');
-
-const MAX_WIDTH = 4096;
 
 // A conversion we refused on purpose (image too big, server busy) gets its own
 // status; anything else that went wrong is a 500 with the given message.

@@ -248,6 +248,160 @@ function createShareUrl(ownerId, id, expiresIn, contentType) {
   return getSignedUrl(s3Client, command, { expiresIn });
 }
 
+// ---------------------------------------------------------------------------
+// Async conversion jobs. They live in their OWN table (not the fragments
+// table): that table is listed by owner and every item is turned into a
+// Fragment, which would choke on job records.
+// ---------------------------------------------------------------------------
+
+const jobsTable = () => process.env.AWS_DYNAMODB_JOBS_TABLE_NAME;
+const resultKey = (ownerId, jobId) => `results/${ownerId}/${jobId}`;
+const isConditionFailure = (err) => err?.name === 'ConditionalCheckFailedException';
+
+// Creates a job record; fails if the id already exists
+function createJob(job) {
+  return ddbDocClient.send(
+    new PutCommand({
+      TableName: jobsTable(),
+      Item: job,
+      ConditionExpression: 'attribute_not_exists(jobId)',
+    })
+  );
+}
+
+// Reads a job. Returns a Promise<job|undefined>
+async function readJob(ownerId, jobId) {
+  const data = await ddbDocClient.send(
+    new GetCommand({ TableName: jobsTable(), Key: { ownerId, jobId } })
+  );
+  return data?.Item;
+}
+
+function deleteJob(ownerId, jobId) {
+  return ddbDocClient.send(new DeleteCommand({ TableName: jobsTable(), Key: { ownerId, jobId } }));
+}
+
+// Atomically takes a job for processing: queued -> running, or running whose
+// lease has run out (the worker holding it died). Sets a new lease and counts
+// the attempt. The database does the check-and-set, so two workers can never
+// both claim it. Returns the updated job, or null when it can't be claimed
+// (finished, or another worker still holds a live lease).
+async function claimJob(ownerId, jobId, nowSeconds, leaseSeconds) {
+  try {
+    const data = await ddbDocClient.send(
+      new UpdateCommand({
+        TableName: jobsTable(),
+        Key: { ownerId, jobId },
+        UpdateExpression:
+          'SET #status = :running, #attempts = if_not_exists(#attempts, :zero) + :one, #lease = :lease, #updated = :updated',
+        ConditionExpression:
+          'attribute_exists(#jobId) AND (#status = :queued OR (#status = :running AND #lease < :now))',
+        ExpressionAttributeNames: {
+          '#status': 'status',
+          '#attempts': 'attempts',
+          '#lease': 'leaseUntil',
+          '#updated': 'updatedAt',
+          '#jobId': 'jobId',
+        },
+        ExpressionAttributeValues: {
+          ':running': 'running',
+          ':queued': 'queued',
+          ':zero': 0,
+          ':one': 1,
+          ':lease': nowSeconds + leaseSeconds,
+          ':now': nowSeconds,
+          ':updated': new Date(nowSeconds * 1000).toISOString(),
+        },
+        ReturnValues: 'ALL_NEW',
+      })
+    );
+    return data.Attributes;
+  } catch (err) {
+    if (isConditionFailure(err)) return null;
+    throw err;
+  }
+}
+
+// Moves a job we hold (status running, this attempt number) to a new state and
+// sets `fields`. Returns false when we no longer hold it (another worker took
+// over after our lease expired), so a slow worker can't overwrite the new one.
+async function transitionJob(ownerId, jobId, attempt, status, fields) {
+  const names = { '#status': 'status', '#attempts': 'attempts', '#updated': 'updatedAt' };
+  const values = {
+    ':running': 'running',
+    ':attempt': attempt,
+    ':status': status,
+    ':updated': new Date().toISOString(),
+  };
+  const sets = ['#status = :status', '#updated = :updated'];
+  Object.entries(fields).forEach(([key, value], i) => {
+    names[`#f${i}`] = key;
+    values[`:f${i}`] = value;
+    sets.push(`#f${i} = :f${i}`);
+  });
+
+  try {
+    await ddbDocClient.send(
+      new UpdateCommand({
+        TableName: jobsTable(),
+        Key: { ownerId, jobId },
+        UpdateExpression: `SET ${sets.join(', ')}`,
+        ConditionExpression: '#status = :running AND #attempts = :attempt',
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+      })
+    );
+    return true;
+  } catch (err) {
+    if (isConditionFailure(err)) return false;
+    throw err;
+  }
+}
+
+const finishJob = (ownerId, jobId, attempt, fields) =>
+  transitionJob(ownerId, jobId, attempt, 'succeeded', fields);
+const failJob = (ownerId, jobId, attempt, error) =>
+  transitionJob(ownerId, jobId, attempt, 'failed', { error });
+// Back to queued with the lease cleared, so the redelivered message can claim it again
+const releaseJob = (ownerId, jobId, attempt, error) =>
+  transitionJob(ownerId, jobId, attempt, 'queued', { leaseUntil: 0, lastError: error });
+
+// Conversion results live in the fragments bucket under results/, which has an
+// S3 lifecycle rule (infra) so they are deleted after a day.
+async function writeJobResult(ownerId, jobId, buffer, contentType) {
+  const params = {
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
+    Key: resultKey(ownerId, jobId),
+    Body: buffer,
+    ContentType: contentType,
+  };
+  try {
+    await s3Client.send(new PutObjectCommand(params));
+  } catch (err) {
+    logger.error({ err, Key: params.Key }, 'Error uploading job result to S3');
+    throw new Error('unable to upload job result', { cause: err });
+  }
+}
+
+// A temporary link to download a job's result. Returns a Promise<string>.
+function createJobResultUrl(ownerId, jobId, expiresIn, contentType) {
+  const command = new GetObjectCommand({
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
+    Key: resultKey(ownerId, jobId),
+    ResponseContentType: contentType,
+  });
+  return getSignedUrl(s3Client, command, { expiresIn });
+}
+
+module.exports.createJob = createJob;
+module.exports.readJob = readJob;
+module.exports.deleteJob = deleteJob;
+module.exports.claimJob = claimJob;
+module.exports.finishJob = finishJob;
+module.exports.failJob = failJob;
+module.exports.releaseJob = releaseJob;
+module.exports.writeJobResult = writeJobResult;
+module.exports.createJobResultUrl = createJobResultUrl;
 module.exports.createShareUrl = createShareUrl;
 module.exports.incrementViews = incrementViews;
 module.exports.listFragments = listFragments;

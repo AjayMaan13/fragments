@@ -7,6 +7,8 @@ const express = require('express');
 const contentType = require('content-type');
 const { Fragment } = require('../../model/fragment');
 
+const jobs = require('./jobs');
+
 // Create a router on which to mount our API endpoints
 const router = express.Router();
 
@@ -29,6 +31,8 @@ router.get('/fragments', require('./get'));
 router.get('/fragments/:id/info', require('./getIdInfo'));
 router.get('/fragments/:id/share', require('./share'));
 router.get('/fragments/:id', require('./getId'));
+router.post('/fragments/:id/jobs', express.json({ limit: '1kb' }), jobs.create);
+router.get('/jobs/:jobId', jobs.get);
 router.post('/fragments', rawBody(), require('./post'));
 router.put('/fragments/:id', rawBody(), require('./put'));
 router.delete('/fragments/:id', require('./delete'));

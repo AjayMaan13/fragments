@@ -40,7 +40,10 @@ data "aws_region" "current" {}
 # Built from names, not from the service resource, so the deploy role can exist
 # (and stay) while the ECS service is torn down.
 locals {
-  ecs_service_arn = "arn:aws:ecs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:service/${var.ecs_cluster_name}/${var.ecs_service_name}"
+  ecs_service_arns = [
+    for name in [var.ecs_service_name, var.ecs_worker_service_name] :
+    "arn:aws:ecs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:service/${var.ecs_cluster_name}/${name}"
+  ]
 }
 
 # Exactly what cd.yml does: push an image, register a task definition
@@ -72,10 +75,10 @@ data "aws_iam_policy_document" "deploy" {
 
   statement {
     actions   = ["ecs:DescribeServices", "ecs:UpdateService"]
-    resources = [local.ecs_service_arn]
+    resources = local.ecs_service_arns
   }
 
-  # The new task definition revision names the two task roles
+  # The new task definition revisions name the task roles (API, worker, execution)
   statement {
     actions   = ["iam:PassRole"]
     resources = var.task_role_arns

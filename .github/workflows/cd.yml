@@ -74,23 +74,29 @@ jobs:
           # Use the git tag version and `latest`
           tags: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:${{ env.VERSION_TAG }}, ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:latest
 
-      # The service only exists while the infrastructure is up (`terraform apply`).
-      # If it has been torn down, the image above is still pushed and we stop here.
-      - name: Check the ECS service is running
+      # The services only exist while the infrastructure is up (`terraform apply`).
+      # If they have been torn down, the image above is still pushed and we skip the
+      # deploy. A missing service, or a missing cluster (which makes describe-services
+      # itself fail), both count as "not running".
+      - name: Check which ECS services are running
         id: service
         run: |
-          status=$(aws ecs describe-services --cluster fragments-cluster --services fragments-service \
-            --query 'services[0].status' --output text)
-          echo "status=$status"
-          echo "up=$([ "$status" = ACTIVE ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          for entry in api:fragments-service worker:fragments-worker-service; do
+            key="${entry%%:*}"
+            name="${entry#*:}"
+            status=$(aws ecs describe-services --cluster fragments-cluster --services "$name" \
+              --query 'services[0].status' --output text 2>/dev/null || echo MISSING)
+            echo "$name: $status"
+            echo "${key}_up=$([ "$status" = ACTIVE ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          done
 
       - name: Skip deploy notice
-        if: steps.service.outputs.up != 'true'
+        if: steps.service.outputs.api_up != 'true'
         run: echo "::notice::Image pushed, but the ECS service is not running. Run terraform apply, then re-run this workflow."
 
       # Copy the task definition Terraform created, minus the fields ECS sets itself
       - name: Get the current ECS task definition
-        if: steps.service.outputs.up == 'true'
+        if: steps.service.outputs.api_up == 'true'
         run: |
           aws ecs describe-task-definition --task-definition fragments-task --query taskDefinition \
             | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
@@ -98,7 +104,7 @@ jobs:
 
       # Update the ECS Task Definition JSON to use the image we just pushed
       - name: Fill in the new image ID in the Amazon ECS task definition
-        if: steps.service.outputs.up == 'true'
+        if: steps.service.outputs.api_up == 'true'
         id: update-task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         env:
@@ -113,10 +119,41 @@ jobs:
 
       # Register the updated task definition and deploy it to our ECS service
       - name: Deploy Amazon ECS task definition
-        if: steps.service.outputs.up == 'true'
+        if: steps.service.outputs.api_up == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.update-task-def.outputs.task-definition }}
           cluster: fragments-cluster
           service: fragments-service
+          wait-for-service-stability: true
+
+      # The queue worker is a second service running this same image with a
+      # different command. Without these steps it would never get new code.
+      - name: Get the current worker task definition
+        if: steps.service.outputs.worker_up == 'true'
+        run: |
+          aws ecs describe-task-definition --task-definition fragments-worker-task --query taskDefinition \
+            | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
+            > worker-task-definition.json
+
+      - name: Fill in the new image ID in the worker task definition
+        if: steps.service.outputs.worker_up == 'true'
+        id: update-worker-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPO: fragments
+          VERSION_TAG: ${{ github.ref_name }}
+        with:
+          task-definition: worker-task-definition.json
+          container-name: fragments-worker-container
+          image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:${{ env.VERSION_TAG }}
+
+      - name: Deploy the worker task definition
+        if: steps.service.outputs.worker_up == 'true'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.update-worker-task-def.outputs.task-definition }}
+          cluster: fragments-cluster
+          service: fragments-worker-service
           wait-for-service-stability: true

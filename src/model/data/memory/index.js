@@ -73,6 +73,93 @@ function createShareUrl() {
   return Promise.resolve(undefined);
 }
 
+// ---------------------------------------------------------------------------
+// Async conversion jobs (same contract as the DynamoDB versions in ../aws).
+// ---------------------------------------------------------------------------
+
+const jobs = new MemoryDB();
+const results = new MemoryDB();
+
+// DynamoDB checks-and-sets in one atomic step. Here every operation awaits, so
+// run the job operations one at a time to get the same guarantee.
+let jobQueue = Promise.resolve();
+const exclusive = (fn) => {
+  const run = jobQueue.then(fn);
+  jobQueue = run.catch(() => {});
+  return run;
+};
+
+const clone = (value) => (value === undefined ? value : JSON.parse(JSON.stringify(value)));
+
+function createJob(job) {
+  return exclusive(async () => {
+    if (await jobs.get(job.ownerId, job.jobId)) throw new Error('job already exists');
+    await jobs.put(job.ownerId, job.jobId, clone(job));
+  });
+}
+
+function readJob(ownerId, jobId) {
+  return exclusive(async () => clone(await jobs.get(ownerId, jobId)));
+}
+
+function deleteJob(ownerId, jobId) {
+  return exclusive(() => jobs.del(ownerId, jobId));
+}
+
+function claimJob(ownerId, jobId, nowSeconds, leaseSeconds) {
+  return exclusive(async () => {
+    const job = await jobs.get(ownerId, jobId);
+    const claimable =
+      job && (job.status === 'queued' || (job.status === 'running' && job.leaseUntil < nowSeconds));
+    if (!claimable) return null;
+    job.status = 'running';
+    job.attempts = (job.attempts || 0) + 1;
+    job.leaseUntil = nowSeconds + leaseSeconds;
+    job.updatedAt = new Date(nowSeconds * 1000).toISOString();
+    return clone(job);
+  });
+}
+
+function transitionJob(ownerId, jobId, attempt, status, fields) {
+  return exclusive(async () => {
+    const job = await jobs.get(ownerId, jobId);
+    if (!job || job.status !== 'running' || job.attempts !== attempt) return false;
+    Object.assign(job, fields, { status, updatedAt: new Date().toISOString() });
+    return true;
+  });
+}
+
+const finishJob = (ownerId, jobId, attempt, fields) =>
+  transitionJob(ownerId, jobId, attempt, 'succeeded', fields);
+const failJob = (ownerId, jobId, attempt, error) =>
+  transitionJob(ownerId, jobId, attempt, 'failed', { error });
+const releaseJob = (ownerId, jobId, attempt, error) =>
+  transitionJob(ownerId, jobId, attempt, 'queued', { leaseUntil: 0, lastError: error });
+
+function writeJobResult(ownerId, jobId, buffer) {
+  return results.put(ownerId, jobId, buffer);
+}
+
+// Test helper: what a worker stored for a job
+function readJobResult(ownerId, jobId) {
+  return results.get(ownerId, jobId);
+}
+
+// No S3 in memory mode, so no download links
+function createJobResultUrl() {
+  return Promise.resolve(undefined);
+}
+
+module.exports.createJob = createJob;
+module.exports.readJob = readJob;
+module.exports.deleteJob = deleteJob;
+module.exports.claimJob = claimJob;
+module.exports.finishJob = finishJob;
+module.exports.failJob = failJob;
+module.exports.releaseJob = releaseJob;
+module.exports.writeJobResult = writeJobResult;
+module.exports.readJobResult = readJobResult;
+module.exports.createJobResultUrl = createJobResultUrl;
 module.exports.createShareUrl = createShareUrl;
 module.exports.incrementViews = incrementViews;
 module.exports.listFragments = listFragments;

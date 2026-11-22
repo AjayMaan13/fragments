@@ -134,7 +134,7 @@ sequenceDiagram
 
 ## Engineering highlights
 
-- **94.69% line test coverage, enforced in CI (80% minimum)** — 226 unit tests plus 14 Hurl integration test files covering every route, every conversion path, and both success and error cases
+- **96.19% line test coverage, enforced in CI (80% minimum)** — 310 unit tests plus 19 Hurl integration test files covering every route, every conversion path, and both success and error cases
 - **Everything as code** — every AWS resource is defined in Terraform, so the whole environment can be created, or destroyed to stop billing, with one command; CI/CD only ships images
 - **No long-lived credentials in CI** — GitHub Actions assumes a least-privilege IAM role through OIDC, limited to this repository's version tags
 - **Least-privilege IAM** — the running container can touch only its own S3 bucket and DynamoDB table, and only with the operations the code uses
@@ -154,6 +154,8 @@ sequenceDiagram
 | `GET` | `/v1/fragments/:id.ext` | Get a fragment converted to another supported format (`.html`, `.txt`, `.yaml`, `.json`, `.xml`, `.pdf`, `.docx`, image extensions) |
 | `GET` | `/v1/fragments/:id/info` | Get a fragment's metadata only (includes `viewCount` and `expiresAt`) |
 | `GET` | `/v1/fragments/:id/share` | Get a temporary public link to the fragment's data (`?expiresIn=<seconds>`, default 15 min, max 1 hour) |
+| `POST` | `/v1/fragments/:id/jobs` | Convert in the background: body `{"to": ".avif", "width": 800}`. Answers `202` with a `Location` to poll (see [Async conversions](#async-conversions)) |
+| `GET` | `/v1/jobs/:jobId` | A job's status (`queued`, `running`, `succeeded`, `failed`), attempts, and a download link when done |
 | `PUT` | `/v1/fragments/:id` | Replace a fragment's data (its type is immutable) |
 | `DELETE` | `/v1/fragments/:id` | Delete a fragment |
 
@@ -161,24 +163,58 @@ Image fragments accept `?width=<pixels>` on reads (with or without an extension)
 
 All `/v1/*` routes require authentication (HTTP Basic locally, or a Cognito bearer token in production).
 
+### Async conversions
+
+Converting inside the request is fine for small things, but some conversions are slow: a 1080p JPEG to AVIF took about 33 s of CPU on the 0.25 vCPU API task, and under load that starved every other request (see `docs/perf/baseline.md`). So there is also a background path:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as API task
+    participant J as Jobs table (DynamoDB)
+    participant Q as SQS queue
+    participant W as Worker task
+    participant S as S3
+    C->>A: POST /v1/fragments/:id/jobs {"to": ".avif"}
+    A->>J: create job (queued)
+    A->>Q: send {jobId, ownerId} + request id
+    A-->>C: 202 + Location /v1/jobs/:jobId
+    W->>Q: long-poll receive
+    W->>J: claim (queued to running, with a lease)
+    W->>S: read fragment, write results/<owner>/<job>
+    W->>J: finish (succeeded)
+    W->>Q: delete message
+    C->>A: GET /v1/jobs/:jobId
+    A-->>C: succeeded + pre-signed result link (1 hour)
+```
+
+- **At-least-once, but one result.** SQS can deliver a message twice. Every state change is a conditional write in DynamoDB: a finished job can't be claimed again, and a worker whose lease ran out can't overwrite the worker that took over.
+- **Worker dies mid-job:** the message reappears after the queue's visibility timeout (120 s) and another attempt claims the job. Locally, killing the worker mid-conversion gave attempt 2 exactly 120 s later and one success.
+- **Failures:** an error retrying can't fix (image over the pixel limit, fragment deleted) fails the job immediately with the reason. Other errors retry with backoff; after 3 attempts the job is `failed`. Messages that still can't be handled land in the dead-letter queue, which has an alarm.
+- **Jobs belong to their creator.** Someone else's job id answers `404`, same as a missing one. Job records and results are deleted after a day.
+- **Not available in memory mode** (no queue): `POST` answers `501`.
+- The existing synchronous `GET /v1/fragments/:id.ext` routes are unchanged.
+
 ## Design notes and limitations
 
 - **HTTP only.** The load balancer serves plain HTTP; there is no custom domain or TLS certificate. Adding HTTPS would mean a domain plus an ACM certificate, or CloudFront in front.
 - **Expiry is enforced on read.** DynamoDB's TTL can take up to about 48 hours to delete a record, so the API treats an expired fragment as missing immediately; the S3 data is then removed by the cleanup Lambda.
 - **Share links are capped at 1 hour.** They are signed with the task role's temporary credentials, which rotate. Shared reads go straight to S3, so they are not counted as views.
 - **PDFs are Latin-text only.** The built-in PDF fonts cover Latin characters; other scripts and emoji do not render. Bold, italics, and links in markdown are flattened to plain text.
-- **Image conversion is bounded.** Images over 16 megapixels are refused with `422`, and at most 2 image conversions run at once (extra requests get `503` + `Retry-After`). A single 1080p JPEG to AVIF conversion takes about 33 s on the 0.25 vCPU task, so heavy conversions are not a good fit for the synchronous API.
+- **Image conversion is bounded, and heavy work belongs in a job.** Images over 16 megapixels are refused with `422`, and at most 2 image conversions run at once (extra requests get `503` + `Retry-After`). A single 1080p JPEG to AVIF conversion takes about 33 s on the 0.25 vCPU task, so heavy conversions are not a good fit for the synchronous API.
 - **PDF and Word are output formats.** They can be produced from markdown or plain text, but not uploaded as fragments.
-- **On-demand deployment.** The load balancer and Fargate task cost money while running, so the intended workflow is `terraform apply` to work and `terraform destroy -target=module.ecs -target=module.alb` when done.
+- **On-demand deployment.** The load balancer and Fargate task cost money while running, so the intended workflow is `terraform apply` to work and `terraform destroy -target=module.ecs -target=module.alb` when done (this also removes the worker service, which runs in the same cluster).
 
 ## Repository layout
 
 ```
 src/                 Express API (routes, model, auth, data backends, conversions)
+                     worker.js + worker-core.js: the queue worker (same image)
 tests/unit/          Jest unit tests          tests/integration/   Hurl HTTP tests
-infra/               Terraform: root config + 10 modules (network, alb, ecs, ecr, iam,
+infra/               Terraform: root config + 12 modules (network, alb, ecs, ecr, iam,
                      storage, auth, events (Lambda), cicd (GitHub OIDC role),
-                     observability (dashboard, alarms))
+                     observability (dashboard, alarms), queue (SQS + dead-letter
+                     queue), worker (second ECS service))
 perf/                k6 load tests (smoke + mixed-load staircase), see perf/README.md
 .github/workflows/   ci.yml (tests, lint, terraform validate) and cd.yml (deploy on tag)
 docs/                observability.md, perf/ (load-test results), UPGRADE_PLAN.md
@@ -194,7 +230,7 @@ All infrastructure is defined in `infra/` (Terraform); CI/CD only ships new imag
 2. `cd infra && terraform init && terraform apply` — creates ECR, S3, DynamoDB (with TTL, a stream and a cleanup Lambda), Cognito, the load balancer, an ECS service (0 tasks for now) and the GitHub deploy role.
 3. In the GitHub repo, add an Actions **variable** `AWS_DEPLOY_ROLE_ARN` set to `terraform output github_deploy_role_arn`.
 4. Push a version tag (`npm version patch && git push --follow-tags`). The `cd` workflow builds and pushes the image to ECR and deploys it.
-5. `terraform apply -var desired_count=1` starts the service. Copy `api_url` and the Cognito values from `terraform output` into `fragments-ui/.env`.
+5. `terraform apply -var desired_count=1 -var worker_desired_count=1` starts the API and the queue worker (the async jobs API needs the worker). Copy `api_url` and the Cognito values from `terraform output` into `fragments-ui/.env`.
 
 To stop billing, `terraform destroy -target=module.ecs -target=module.alb` removes only the load balancer and service, plus the dashboard and alarms that depend on them (data and users are kept); `terraform destroy` removes everything.
 
@@ -270,5 +306,9 @@ npm run test:integration  # Hurl integration tests (requires the Docker Compose 
 | `AWS_S3_BUCKET_NAME` / `AWS_DYNAMODB_TABLE_NAME` | Target AWS storage resources |
 | `API_URL` | Used to build the `Location` header on fragment creation |
 | `FRAGMENTS_LOG_LEVEL` | Pino log level (`info` in production, `debug` for troubleshooting) |
+| `AWS_SQS_QUEUE_URL` | Enables async jobs: the SQS queue the API sends to and the worker reads from. Without it `POST .../jobs` answers `501` |
+| `AWS_DYNAMODB_JOBS_TABLE_NAME` | DynamoDB table holding job records |
+| `AWS_SQS_ENDPOINT_URL` | Alternate SQS endpoint (MiniStack) for local runs |
+| `JOB_MAX_ATTEMPTS` / `JOB_LEASE_SECONDS` | Attempts before a job fails (default `3`, matches the queue's redrive count) and how long a worker may hold a job (default `110` s, just under the queue's 120 s visibility timeout) |
 | `MAX_IMAGE_PIXELS` | Largest image (width x height) that will be converted or resized (default 16,000,000). Larger images are refused with `422`; found by load testing, see `docs/perf/baseline.md` |
 | `MAX_CONCURRENT_IMAGE_CONVERSIONS` | Image conversions allowed at once (default `2`). Extra requests get `503` with `Retry-After` |

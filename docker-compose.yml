@@ -36,9 +36,40 @@ services:
       # something else is defined in the env.
       - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-fragments}
       - AWS_DYNAMODB_TABLE_NAME=${AWS_DYNAMODB_TABLE_NAME:-fragments}
+      # Async conversion jobs: a queue in MiniStack and a second table, both
+      # created by local-aws-setup.sh. The worker below gets the same values.
+      - AWS_DYNAMODB_JOBS_TABLE_NAME=fragments-jobs
+      - AWS_SQS_ENDPOINT_URL=http://ministack:4566
+      - AWS_SQS_QUEUE_URL=http://ministack:4566/000000000000/fragments-jobs
     # Ports to publish
     ports:
       - '8080:8080'
+
+  # Queue worker: the same image, started with a different command. It takes
+  # conversion jobs off the SQS queue (see src/worker.js). It has no port and
+  # needs no auth settings.
+  fragments-worker:
+    init: true
+    build: .
+    command: ['node', 'src/worker.js']
+    environment:
+      - NODE_ENV=development
+      - FRAGMENTS_LOG_LEVEL=${FRAGMENTS_LOG_LEVEL:-info}
+      - AWS_REGION=us-east-2
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_S3_ENDPOINT_URL=http://ministack:4566
+      - AWS_DYNAMODB_ENDPOINT_URL=http://dynamodb-local:8000
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME:-fragments}
+      - AWS_DYNAMODB_TABLE_NAME=${AWS_DYNAMODB_TABLE_NAME:-fragments}
+      - AWS_DYNAMODB_JOBS_TABLE_NAME=fragments-jobs
+      - AWS_SQS_ENDPOINT_URL=http://ministack:4566
+      - AWS_SQS_QUEUE_URL=http://ministack:4566/000000000000/fragments-jobs
+    # The queue and table are created after the containers start; if the worker
+    # beats them to it, it logs the error and keeps retrying
+    depends_on:
+      - ministack
+      - dynamodb-local
 
   # DynamoDB Local, see: https://hub.docker.com/r/amazon/dynamodb-local
   dynamodb-local:
@@ -58,7 +89,7 @@ services:
       - '4566:4566'
     environment:
       # See https://ministack.org/docs/configuration for config details.
-      # We only want to run S3
-      - SERVICES=s3
+      # We only want S3 (fragment data) and SQS (the job queue)
+      - SERVICES=s3,sqs
       # We will use us-east-2
       - MINISTACK_REGION=us-east-2

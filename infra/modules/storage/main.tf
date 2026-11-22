@@ -52,3 +52,50 @@ resource "aws_dynamodb_table" "fragments" {
     enabled        = true
   }
 }
+
+# Async conversion jobs (status, attempts, lease). A separate table on purpose:
+# the API lists the fragments table by owner and turns every item into a
+# Fragment, which would choke on job records.
+resource "aws_dynamodb_table" "jobs" {
+  name         = "${var.project_name}-jobs"
+  billing_mode = "PAY_PER_REQUEST"
+
+  hash_key  = "ownerId"
+  range_key = "jobId"
+
+  attribute {
+    name = "ownerId"
+    type = "S"
+  }
+
+  attribute {
+    name = "jobId"
+    type = "S"
+  }
+
+  # Job records disappear a day after creation (the app sets expiresAt)
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
+}
+
+# Conversion results go under results/<ownerId>/<jobId>, a different shape from
+# the <ownerId>/<id> keys of fragment data (so the expiry Lambda never touches
+# them). Delete them after a day: the job record is gone by then too.
+resource "aws_s3_bucket_lifecycle_configuration" "results" {
+  bucket = aws_s3_bucket.fragments.id
+
+  rule {
+    id     = "expire-job-results"
+    status = "Enabled"
+
+    filter {
+      prefix = "results/"
+    }
+
+    expiration {
+      days = 1
+    }
+  }
+}
