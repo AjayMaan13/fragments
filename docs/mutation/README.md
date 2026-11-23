@@ -37,6 +37,10 @@ The score counts mutants that a test caught (killed or timed out) divided by tho
 | `worker-core.js`       | 97.59% |     | `routes/api/put.js`                 | 87.50% |
 | `routes/api/index.js`  | 86.96% |     |                                     |        |
 
+### The first GitHub run
+
+The weekly workflow's first run (2026-11-23, 2-core runner, with `src/search/*` added to the mutated files after this table was measured) scored **95.10%** (1,166 killed, 37 timed out, 46 survived, 16 not covered). The 90% gate passed. The lower figure is mostly the new, less-tested search code and not a regression in the files above.
+
 ## Tests added, per file
 
 | File                              | Before | After | What it pins down                                                                                                                                                                     |
