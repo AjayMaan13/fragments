@@ -40,6 +40,7 @@ resource "aws_ecs_task_definition" "this" {
         { name = "AWS_DYNAMODB_TABLE_NAME", value = var.dynamodb_table_name },
         { name = "AWS_DYNAMODB_JOBS_TABLE_NAME", value = var.jobs_table_name },
         { name = "AWS_SQS_QUEUE_URL", value = var.queue_url },
+        { name = "AWS_DYNAMODB_EMBEDDINGS_TABLE_NAME", value = var.embeddings_table_name },
         { name = "FRAGMENTS_LOG_LEVEL", value = "info" },
       ]
 

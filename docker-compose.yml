@@ -41,6 +41,9 @@ services:
       - AWS_DYNAMODB_JOBS_TABLE_NAME=fragments-jobs
       - AWS_SQS_ENDPOINT_URL=http://ministack:4566
       - AWS_SQS_QUEUE_URL=http://ministack:4566/000000000000/fragments-jobs
+      # Search index; the fake embedder needs no AWS (real quality is measured with Bedrock, see eval/)
+      - AWS_DYNAMODB_EMBEDDINGS_TABLE_NAME=fragments-embeddings
+      - EMBEDDER=fake
     # Ports to publish
     ports:
       - '8080:8080'
@@ -65,6 +68,9 @@ services:
       - AWS_DYNAMODB_JOBS_TABLE_NAME=fragments-jobs
       - AWS_SQS_ENDPOINT_URL=http://ministack:4566
       - AWS_SQS_QUEUE_URL=http://ministack:4566/000000000000/fragments-jobs
+      # Search index; the fake embedder needs no AWS (real quality is measured with Bedrock, see eval/)
+      - AWS_DYNAMODB_EMBEDDINGS_TABLE_NAME=fragments-embeddings
+      - EMBEDDER=fake
     # The queue and table are created after the containers start; if the worker
     # beats them to it, it logs the error and keeps retrying
     depends_on:

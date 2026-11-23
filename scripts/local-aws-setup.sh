@@ -76,3 +76,18 @@ dynamodb create-table \
     --provisioned-throughput \
         ReadCapacityUnits=10,WriteCapacityUnits=5
 aws --endpoint-url=http://localhost:8000 dynamodb wait table-exists --table-name fragments-jobs
+
+# Search index: one item per chunk of a text fragment
+echo "Creating DynamoDB-Local DynamoDB table: fragments-embeddings"
+aws --endpoint-url=http://localhost:8000 \
+dynamodb create-table \
+    --table-name fragments-embeddings \
+    --attribute-definitions \
+        AttributeName=ownerId,AttributeType=S \
+        AttributeName=chunkId,AttributeType=S \
+    --key-schema \
+        AttributeName=ownerId,KeyType=HASH \
+        AttributeName=chunkId,KeyType=RANGE \
+    --provisioned-throughput \
+        ReadCapacityUnits=10,WriteCapacityUnits=5
+aws --endpoint-url=http://localhost:8000 dynamodb wait table-exists --table-name fragments-embeddings

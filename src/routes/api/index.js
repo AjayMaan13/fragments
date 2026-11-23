@@ -33,6 +33,7 @@ router.get('/fragments/:id/share', require('./share'));
 router.get('/fragments/:id', require('./getId'));
 router.post('/fragments/:id/jobs', express.json({ limit: '1kb' }), jobs.create);
 router.get('/jobs/:jobId', jobs.get);
+router.get('/search', require('./search'));
 router.post('/fragments', rawBody(), require('./post'));
 router.put('/fragments/:id', rawBody(), require('./put'));
 router.delete('/fragments/:id', require('./delete'));

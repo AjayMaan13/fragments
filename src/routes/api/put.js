@@ -4,6 +4,7 @@ const contentType = require('content-type');
 const { Fragment } = require('../../model/fragment');
 const { createSuccessResponse, createErrorResponse } = require('../../response');
 const logger = require('../../logger');
+const { enqueueIndex } = require('../../search');
 
 // Update an authenticated user's existing fragment's data (type is immutable)
 module.exports = async (req, res) => {
@@ -41,6 +42,7 @@ module.exports = async (req, res) => {
 
   try {
     await fragment.setData(req.body);
+    await enqueueIndex(fragment, req.id);
     logger.info({ id: fragment.id, ownerId: req.user }, 'Updated fragment');
     res.status(200).json(createSuccessResponse({ fragment }));
   } catch (err) {

@@ -25,3 +25,11 @@ output "jobs_table_name" {
 output "jobs_table_arn" {
   value = aws_dynamodb_table.jobs.arn
 }
+
+output "embeddings_table_name" {
+  value = aws_dynamodb_table.embeddings.name
+}
+
+output "embeddings_table_arn" {
+  value = aws_dynamodb_table.embeddings.arn
+}

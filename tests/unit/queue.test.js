@@ -183,3 +183,25 @@ describe('queue details', () => {
     });
   });
 });
+
+describe('sendEmbed', () => {
+  test('queues a pointer with the fragment version, and the request id as an attribute', async () => {
+    jest.resetModules();
+    mockSend.mockReset();
+    process.env.AWS_SQS_QUEUE_URL = QUEUE_URL;
+    process.env.AWS_REGION = 'us-east-2';
+    const queue = require('../../src/queue');
+    await queue.sendEmbed({ ownerId: 'o', fragmentId: 'f', updated: 'u', requestId: 'r' });
+    const { input } = mockSend.mock.calls[0][0];
+    expect(JSON.parse(input.MessageBody)).toEqual({
+      kind: 'embed',
+      ownerId: 'o',
+      fragmentId: 'f',
+      updated: 'u',
+    });
+    expect(input.MessageAttributes.requestId.StringValue).toBe('r');
+    await queue.sendEmbed({ ownerId: 'o', fragmentId: 'f', updated: 'u' });
+    expect(mockSend.mock.calls[1][0].input).not.toHaveProperty('MessageAttributes');
+    delete process.env.AWS_SQS_QUEUE_URL;
+  });
+});

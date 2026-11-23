@@ -6,6 +6,7 @@ const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aw
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const ddbDocClient = require('./ddbDocClient');
 const {
+  BatchWriteCommand,
   PutCommand,
   GetCommand,
   QueryCommand,
@@ -393,6 +394,90 @@ function createJobResultUrl(ownerId, jobId, expiresIn, contentType) {
   return getSignedUrl(s3Client, command, { expiresIn });
 }
 
+// ---------------------------------------------------------------------------
+// Search index: one item per chunk of a fragment, in their own table (a
+// vector per chunk would bloat the fragments table, which is listed by owner).
+// ---------------------------------------------------------------------------
+
+const embeddingsTable = () => process.env.AWS_DYNAMODB_EMBEDDINGS_TABLE_NAME;
+
+// All of an owner's chunks (paged)
+async function listChunks(ownerId) {
+  const items = [];
+  let ExclusiveStartKey;
+  do {
+    const page = await ddbDocClient.send(
+      new QueryCommand({
+        TableName: embeddingsTable(),
+        KeyConditionExpression: 'ownerId = :o',
+        ExpressionAttributeValues: { ':o': ownerId },
+        ExclusiveStartKey,
+      })
+    );
+    items.push(...(page.Items || []));
+    ExclusiveStartKey = page.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
+}
+
+// BatchWrite takes at most 25 requests and may hand some back unprocessed
+async function batchWrite(requests) {
+  for (let i = 0; i < requests.length; i += 25) {
+    let pending = requests.slice(i, i + 25);
+    for (let attempt = 0; pending.length && attempt < 5; attempt++) {
+      const out = await ddbDocClient.send(
+        new BatchWriteCommand({ RequestItems: { [embeddingsTable()]: pending } })
+      );
+      pending = out.UnprocessedItems?.[embeddingsTable()] || [];
+    }
+    if (pending.length) throw new Error('unable to write all chunks');
+  }
+}
+
+// Remove every chunk of one fragment
+async function deleteChunks(ownerId, fragmentId) {
+  const keys = [];
+  let ExclusiveStartKey;
+  do {
+    const page = await ddbDocClient.send(
+      new QueryCommand({
+        TableName: embeddingsTable(),
+        KeyConditionExpression: 'ownerId = :o AND begins_with(chunkId, :f)',
+        ExpressionAttributeValues: { ':o': ownerId, ':f': `${fragmentId}#` },
+        ProjectionExpression: 'ownerId, chunkId',
+        ExclusiveStartKey,
+      })
+    );
+    keys.push(...(page.Items || []));
+    ExclusiveStartKey = page.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  await batchWrite(keys.map((Key) => ({ DeleteRequest: { Key } })));
+}
+
+// Replace a fragment's chunks: [{ index, text, vector: Buffer }]
+async function replaceChunks(ownerId, fragmentId, chunks, { updated, expiresAt } = {}) {
+  await deleteChunks(ownerId, fragmentId);
+  await batchWrite(
+    chunks.map((c) => ({
+      PutRequest: {
+        Item: {
+          ownerId,
+          chunkId: `${fragmentId}#${String(c.index).padStart(3, '0')}`,
+          fragmentId,
+          index: c.index,
+          text: c.text,
+          vector: c.vector,
+          updated,
+          ...(expiresAt !== undefined ? { expiresAt } : {}),
+        },
+      },
+    }))
+  );
+}
+
+module.exports.listChunks = listChunks;
+module.exports.deleteChunks = deleteChunks;
+module.exports.replaceChunks = replaceChunks;
 module.exports.createJob = createJob;
 module.exports.readJob = readJob;
 module.exports.deleteJob = deleteJob;

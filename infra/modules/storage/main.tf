@@ -99,3 +99,29 @@ resource "aws_s3_bucket_lifecycle_configuration" "results" {
     }
   }
 }
+
+# Search index: one item per chunk of a text fragment, with its embedding vector.
+# Separate from the fragments table on purpose (that one is listed by owner and
+# turned into Fragment objects). Chunks inherit the fragment's expiresAt.
+resource "aws_dynamodb_table" "embeddings" {
+  name         = "${var.project_name}-embeddings"
+  billing_mode = "PAY_PER_REQUEST"
+
+  hash_key  = "ownerId"
+  range_key = "chunkId" # "<fragmentId>#<chunk number>"
+
+  attribute {
+    name = "ownerId"
+    type = "S"
+  }
+
+  attribute {
+    name = "chunkId"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
+}

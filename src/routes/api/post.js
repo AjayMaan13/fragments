@@ -3,6 +3,7 @@
 const { Fragment } = require('../../model/fragment');
 const { createSuccessResponse, createErrorResponse } = require('../../response');
 const logger = require('../../logger');
+const { enqueueIndex } = require('../../search');
 
 // Longest allowed lifetime for an expiring fragment: 30 days, in seconds
 const MAX_EXPIRES_IN = 60 * 60 * 24 * 30;
@@ -42,6 +43,7 @@ module.exports = async (req, res) => {
     });
     await fragment.save();
     await fragment.setData(req.body);
+    await enqueueIndex(fragment, req.id);
 
     logger.info({ id: fragment.id, ownerId: req.user }, 'Created new fragment');
 
