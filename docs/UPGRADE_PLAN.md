@@ -1,3 +1,18 @@
+# Status: complete (2026-11-23)
+
+All four blocks shipped, each merged and tagged. Items from the plan's cut line that were deliberately **not** built: worker auto scaling, a search box in the UI, a larger/harder search evaluation, and the optional `.htpasswd` change.
+
+| Block | Tag | Evidence |
+|---|---|---|
+| 1. Cleanup, observability, k6 baseline | `v0.9.0` | [`perf/baseline.md`](perf/baseline.md), [`observability.md`](observability.md) |
+| 2. Async pipeline (SQS, worker, DLQ) | `v0.10.0` | [`perf/async.md`](perf/async.md) |
+| 3. Mutation testing and Playwright | `v0.11.0` (UI `v0.2.0`) | [`mutation/README.md`](mutation/README.md), fragments-ui |
+| 4. Semantic search (Bedrock) | `v1.0.0` | [`search.md`](search.md) |
+
+The rest of this file is the original plan as written, kept for the record; where results differ from its estimates, the documents above are the source of truth.
+
+---
+
 # Fragments upgrade plan: all 5 upgrades, 4 blocks
 
 Written 2026-11-21 from the actual code (repo `AjayMaan13/fragments` + `fragments-ui`, local clone, baseline `v0.8.0`).
