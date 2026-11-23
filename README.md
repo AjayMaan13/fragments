@@ -22,6 +22,8 @@ Every push runs a full test suite; every version tag builds a Docker image and r
 - **View counts**, incremented atomically in DynamoDB
 - **Temporary public share links** — pre-signed S3 URLs, capped at 1 hour and at the fragment's own expiry
 - **Image thumbnails** on the fly (`?width=<pixels>`)
+- **Background conversions** — heavy conversions run as jobs on a separate worker over SQS (`POST /v1/fragments/:id/jobs`), so they can't starve the API ([details](#async-conversions))
+- **Semantic search** — find your text fragments by meaning with Bedrock embeddings (`GET /v1/search`, [details](#semantic-search))
 - Two swappable backends, chosen purely by environment variables:
   - **Auth:** HTTP Basic (local dev) or Amazon Cognito (production)
   - **Storage:** in-memory (local dev) or Amazon S3 + DynamoDB (production)
@@ -133,6 +135,17 @@ sequenceDiagram
 - **Containerization:** Multi-stage Dockerfile, production dependencies only in the final image
 
 ## Engineering highlights
+
+Measured, with the commands and raw numbers in [`docs/`](docs/):
+
+- **Found and fixed real failures by load testing** ([`docs/perf/baseline.md`](docs/perf/baseline.md)). With k6 against the deployed 0.25 vCPU task: it is CPU-bound at about 100 req/s; one 758 KiB PNG that decodes to 256 megapixels killed the container with a single request; and a mix with 20% conversions took cheap-read p95 from 63 ms to over 60 s with 39% of requests failing. Fixed with an image pixel limit (422) and a cap on concurrent conversions.
+- **Async pipeline, measured before and after** ([`docs/perf/async.md`](docs/perf/async.md)). Moving conversions to an SQS worker (dead-letter queue, conditional DynamoDB writes, leases) took the same load to cheap-read p95 **67 ms with 0 of 3,712 requests failing**. The honest remainder: one 0.5 vCPU worker finishes one AVIF per ~19 s, and small jobs queue behind heavy ones.
+- **Mutation testing, not just coverage** ([`docs/mutation/`](docs/mutation/README.md)). Line coverage was 96% while only 76.4% of mutants were caught; adding 234 targeted tests raised it to **98.6%** (95.1% on GitHub's weekly run, which also covers the search code), and found a real bug (a failed resize returned its error labelled as an image).
+- **Observability** ([`docs/observability.md`](docs/observability.md)). A CloudWatch dashboard, six alarms and custom metrics, all Terraform; request IDs flow from the API into the worker's logs. Load tests showed the first 5xx alarm missed load-balancer-generated errors; fixed and seen firing.
+- **Semantic search on Bedrock** ([`docs/search.md`](docs/search.md)). Titan embeddings at 256 dimensions, indexed in the background, scoped to the caller. Verified on the deployed stack: paraphrased queries found the right note and another user saw nothing; on a small author-written evaluation recall@1 was 1.00 against 0.44 for a keyword baseline.
+- **End-to-end UI tests** in [fragments-ui](https://github.com/AjayMaan13/fragments-ui): 35 Playwright tests in CI with no AWS or backend, plus a manual live test against real Cognito.
+
+And the foundations:
 
 - **97.96% line test coverage, enforced in CI (80% minimum)** — 608 unit tests plus 20 Hurl integration test files covering every route, every conversion path, and both success and error cases
 - **Everything as code** — every AWS resource is defined in Terraform, so the whole environment can be created, or destroyed to stop billing, with one command; CI/CD only ships images

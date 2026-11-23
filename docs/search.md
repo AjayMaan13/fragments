@@ -33,6 +33,13 @@ recall@k is the share of queries whose correct document is in the top k; MRR is 
 - A fragment is indexed by its first 40 chunks (about 36,000 characters).
 - Only `text/plain`, `text/markdown` and `text/html` are indexed (HTML as the text a reader sees). Images and other types are not.
 
-## Not verified on AWS
+## Verified on the deployed stack
 
-The API-to-Bedrock path inside ECS (the IAM policy scoped to the one model, the embeddings table, the worker indexing through real SQS) has been validated by `terraform validate` and, locally, against MiniStack and DynamoDB Local with the fake embedder, but **not deployed**: the stack was torn down at the end of Phase 3. The Bedrock calls themselves were run for real, from a laptop, by the evaluation.
+Run on 2026-11-22 against the real stack (`v1.0.0` image, API and worker on Fargate, Bedrock called through the task roles, real DynamoDB and SQS), then torn down:
+
+- Three notes were created; the worker had embedded all three **within seconds** (3 of 3 at the first check, 3 `Indexed fragment for search` lines in the worker log), so the IAM policy for Bedrock and the embeddings table work.
+- Paraphrased queries found the right note with no shared words: "how do I keep my bread culture alive" returned the sourdough note, "my pet stopped eating and is hiding" returned the cat-health note, "how to make database lookups faster" returned the database-index note. Each search took about 0.2 s measured from a laptop, including the Bedrock call for the query.
+- A second user searching the same words got no results (isolation).
+- After deleting the sourdough note it no longer appeared in results.
+
+This was a functional check of three notes and a few queries, not a load or accuracy test; accuracy is the evaluation above.
