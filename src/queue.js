@@ -53,6 +53,23 @@ async function sendJob({ jobId, ownerId, requestId }) {
 }
 
 /**
+ * Queue "(re)index this fragment for search". Carries the fragment's `updated`
+ * time so the worker can skip the message if the fragment changed since.
+ */
+async function sendEmbed({ ownerId, fragmentId, updated, requestId }) {
+  const params = {
+    QueueUrl: queueUrl(),
+    MessageBody: JSON.stringify({ kind: 'embed', ownerId, fragmentId, updated }),
+  };
+  if (requestId) {
+    params.MessageAttributes = {
+      requestId: { DataType: 'String', StringValue: String(requestId) },
+    };
+  }
+  await getClient().send(new SendMessageCommand(params));
+}
+
+/**
  * Long-poll for messages. Resolves to [] when none arrive within waitSeconds.
  * Each message: { id, body, handle, receiveCount, requestId }
  */
@@ -91,4 +108,4 @@ async function delay(handle, seconds) {
   );
 }
 
-module.exports = { isEnabled, sendJob, receive, remove, delay };
+module.exports = { isEnabled, sendJob, sendEmbed, receive, remove, delay };

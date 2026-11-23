@@ -22,3 +22,8 @@ variable "queue_arn" {
   description = "ARN of the jobs SQS queue"
   type        = string
 }
+
+variable "embeddings_table_arn" {
+  description = "ARN of the search-index DynamoDB table"
+  type        = string
+}

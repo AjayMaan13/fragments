@@ -150,6 +150,42 @@ function createJobResultUrl() {
   return Promise.resolve(undefined);
 }
 
+// ---------------------------------------------------------------------------
+// Search index (same contract as the DynamoDB versions in ../aws)
+// ---------------------------------------------------------------------------
+
+const chunkStore = new MemoryDB();
+
+async function listChunks(ownerId) {
+  return (await chunkStore.query(ownerId)).map((c) => ({ ...c }));
+}
+
+async function deleteChunks(ownerId, fragmentId) {
+  for (const chunk of await chunkStore.query(ownerId)) {
+    if (chunk.fragmentId === fragmentId) await chunkStore.del(ownerId, chunk.chunkId);
+  }
+}
+
+async function replaceChunks(ownerId, fragmentId, chunks, { updated, expiresAt } = {}) {
+  await deleteChunks(ownerId, fragmentId);
+  for (const c of chunks) {
+    const chunkId = `${fragmentId}#${String(c.index).padStart(3, '0')}`;
+    await chunkStore.put(ownerId, chunkId, {
+      ownerId,
+      chunkId,
+      fragmentId,
+      index: c.index,
+      text: c.text,
+      vector: c.vector,
+      updated,
+      ...(expiresAt !== undefined ? { expiresAt } : {}),
+    });
+  }
+}
+
+module.exports.listChunks = listChunks;
+module.exports.deleteChunks = deleteChunks;
+module.exports.replaceChunks = replaceChunks;
 module.exports.createJob = createJob;
 module.exports.readJob = readJob;
 module.exports.deleteJob = deleteJob;

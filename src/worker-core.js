@@ -30,6 +30,7 @@ const {
 } = require('./model/data');
 const { convertFragment, ConversionLimitError } = require('./convert');
 const { recordJob } = require('./metrics');
+const { indexFragment } = require('./search');
 
 // A failure retrying cannot fix
 class PermanentJobError extends Error {}
@@ -40,16 +41,43 @@ const isPermanent = (err) =>
 // Wait before a retry: 10 s, 20 s, 40 s, ... capped at a minute
 const retryDelaySeconds = (receiveCount) => Math.min(60, 10 * 2 ** (receiveCount - 1));
 
+// A "(re)index this fragment for search" message. Idempotent: indexing twice gives the
+// same chunks, and a message for an out-of-date version is skipped. Failures retry with
+// the queue's backoff; after the last delivery we give up (the index is rebuilt on the
+// fragment's next update).
+async function processEmbed(message, body, queue) {
+  const log = baseLogger.child({ fragmentId: body.fragmentId, requestId: message.requestId });
+  try {
+    const result = await indexFragment(body.ownerId, body.fragmentId, body.updated);
+    log.info({ result }, 'Indexed fragment for search');
+    await queue.remove(message.handle);
+    return result === 'indexed' ? 'embedded' : 'skipped';
+  } catch (err) {
+    if (message.receiveCount >= Job.maxAttempts()) {
+      log.warn({ err }, 'Giving up indexing fragment');
+      await queue.remove(message.handle);
+      return 'failed';
+    }
+    const wait = retryDelaySeconds(message.receiveCount);
+    log.warn({ err, retryInSeconds: wait }, 'Indexing failed, will retry');
+    await queue.delay(message.handle, wait);
+    return 'retry';
+  }
+}
+
 async function processMessage(message, { queue = require('./queue') } = {}) {
   let body;
   try {
     body = JSON.parse(message.body);
-    if (!body.jobId || !body.ownerId) throw new Error('missing jobId/ownerId');
+    const valid = body.kind === 'embed' ? body.fragmentId : body.jobId;
+    if (!valid || !body.ownerId) throw new Error('missing jobId/ownerId');
   } catch (err) {
     baseLogger.warn({ err, messageId: message.id }, 'Discarding malformed job message');
     await queue.remove(message.handle);
     return 'discarded';
   }
+
+  if (body.kind === 'embed') return processEmbed(message, body, queue);
 
   const { jobId, ownerId } = body;
   const log = baseLogger.child({ jobId, requestId: message.requestId });

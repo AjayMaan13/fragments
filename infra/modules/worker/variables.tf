@@ -65,3 +65,7 @@ variable "jobs_table_name" {
 variable "queue_url" {
   type = string
 }
+
+variable "embeddings_table_name" {
+  type = string
+}

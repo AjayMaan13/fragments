@@ -3,6 +3,7 @@
 const { Fragment } = require('../../model/fragment');
 const { createSuccessResponse, createErrorResponse } = require('../../response');
 const logger = require('../../logger');
+const { removeFromIndex } = require('../../search');
 
 // Delete an authenticated user's fragment (metadata and data) by id
 module.exports = async (req, res) => {
@@ -12,6 +13,7 @@ module.exports = async (req, res) => {
     // Make sure the fragment exists (and belongs to this user) before deleting it
     await Fragment.byId(req.user, id);
     await Fragment.delete(req.user, id);
+    await removeFromIndex(req.user, id);
     res.status(200).json(createSuccessResponse());
   } catch (err) {
     logger.warn({ err, id }, 'Fragment not found');

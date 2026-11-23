@@ -1,0 +1,162 @@
+{
+  "embedder": "fake",
+  "model": "fake word-hashing embedder",
+  "dimensions": 256,
+  "documents": 30,
+  "queries": 25,
+  "date": "2026-11-23",
+  "semantic": {
+    "mrr": 0.317,
+    "recall@1": 0.2,
+    "recall@3": 0.32,
+    "recall@5": 0.4
+  },
+  "keywordBaseline": {
+    "mrr": 0.53,
+    "recall@1": 0.44,
+    "recall@3": 0.56,
+    "recall@5": 0.6
+  },
+  "semanticTop1Misses": [
+    {
+      "q": "how do I keep my bread culture alive",
+      "expected": [
+        "d01"
+      ],
+      "got": "d13"
+    },
+    {
+      "q": "easy Italian supper with red sauce",
+      "expected": [
+        "d02"
+      ],
+      "got": "d24"
+    },
+    {
+      "q": "preparing for a 26-mile race",
+      "expected": [
+        "d03"
+      ],
+      "got": "d02"
+    },
+    {
+      "q": "beginner gym routine with barbell lifts",
+      "expected": [
+        "d04"
+      ],
+      "got": "d24"
+    },
+    {
+      "q": "best way to invest small amounts every month for the long term",
+      "expected": [
+        "d05"
+      ],
+      "got": "d12"
+    },
+    {
+      "q": "a loan where the repayment never changes",
+      "expected": [
+        "d06"
+      ],
+      "got": "d08"
+    },
+    {
+      "q": "why is my container build so slow",
+      "expected": [
+        "d10"
+      ],
+      "got": "d14"
+    },
+    {
+      "q": "things to do in Japan's capital over a long weekend",
+      "expected": [
+        "d11"
+      ],
+      "got": "d28"
+    },
+    {
+      "q": "multi-day camping walk in southern Chile",
+      "expected": [
+        "d12"
+      ],
+      "got": "d11"
+    },
+    {
+      "q": "trimming flowering bushes in winter",
+      "expected": [
+        "d13"
+      ],
+      "got": "d23"
+    },
+    {
+      "q": "turning food waste into soil",
+      "expected": [
+        "d14"
+      ],
+      "got": "d13"
+    },
+    {
+      "q": "I cannot get to sleep at night, what should I change",
+      "expected": [
+        "d15"
+      ],
+      "got": "d13"
+    },
+    {
+      "q": "a mindfulness exercise to reduce anxiety",
+      "expected": [
+        "d16"
+      ],
+      "got": "d28"
+    },
+    {
+      "q": "my pet cat stopped eating",
+      "expected": [
+        "d17"
+      ],
+      "got": "d05"
+    },
+    {
+      "q": "why are the polar ice caps shrinking",
+      "expected": [
+        "d19"
+      ],
+      "got": "d15"
+    },
+    {
+      "q": "how to prepare for talking to a hiring manager",
+      "expected": [
+        "d21"
+      ],
+      "got": "d23"
+    },
+    {
+      "q": "asking for more money after getting a job offer",
+      "expected": [
+        "d22"
+      ],
+      "got": "d17"
+    },
+    {
+      "q": "taking pictures with beautiful natural light",
+      "expected": [
+        "d23"
+      ],
+      "got": "d30"
+    },
+    {
+      "q": "getting faster at switching between chords",
+      "expected": [
+        "d24"
+      ],
+      "got": "d07"
+    },
+    {
+      "q": "how should I start a game of chess",
+      "expected": [
+        "d25"
+      ],
+      "got": "d09"
+    }
+  ]
+}

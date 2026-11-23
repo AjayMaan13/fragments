@@ -12,7 +12,8 @@
     "src/model/job.js",
     "src/routes/api/*.js",
     "src/worker-core.js",
-    "src/queue.js"
+    "src/queue.js",
+    "src/search/*.js"
   ],
   "incremental": true,
   "incrementalFile": "reports/stryker-incremental.json",

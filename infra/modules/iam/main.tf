@@ -57,6 +57,34 @@ data "aws_iam_policy_document" "task_data_access" {
   }
 }
 
+data "aws_region" "current" {}
+
+# Search embeddings come from one Bedrock model, and nothing else in Bedrock is allowed
+locals {
+  embedding_model_arn = "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/amazon.titan-embed-text-v2:0"
+}
+
+# API: embed the query, read the owner's chunks, and remove a deleted fragment's chunks
+data "aws_iam_policy_document" "task_search_access" {
+  statement {
+    sid       = "EmbeddingsTable"
+    actions   = ["dynamodb:Query", "dynamodb:BatchWriteItem"]
+    resources = [var.embeddings_table_arn]
+  }
+
+  statement {
+    sid       = "EmbedQuery"
+    actions   = ["bedrock:InvokeModel"]
+    resources = [local.embedding_model_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "task_search_access" {
+  name   = "${var.project_name}-task-search-access"
+  role   = aws_iam_role.task_role.id
+  policy = data.aws_iam_policy_document.task_search_access.json
+}
+
 # Jobs API: record a job and read it back, and queue it. The API does not
 # process jobs, so it gets send only (no receive/delete).
 data "aws_iam_policy_document" "task_jobs_access" {
@@ -123,6 +151,27 @@ data "aws_iam_policy_document" "worker_access" {
     actions   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
     resources = [var.jobs_table_arn]
   }
+}
+
+# The worker builds the index: embed each chunk, replace a fragment's chunks
+data "aws_iam_policy_document" "worker_search_access" {
+  statement {
+    sid       = "EmbeddingsTable"
+    actions   = ["dynamodb:Query", "dynamodb:BatchWriteItem"]
+    resources = [var.embeddings_table_arn]
+  }
+
+  statement {
+    sid       = "EmbedChunks"
+    actions   = ["bedrock:InvokeModel"]
+    resources = [local.embedding_model_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "worker_search_access" {
+  name   = "${var.project_name}-worker-search-access"
+  role   = aws_iam_role.worker_role.id
+  policy = data.aws_iam_policy_document.worker_search_access.json
 }
 
 resource "aws_iam_role_policy" "worker_access" {

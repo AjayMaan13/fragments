@@ -1,0 +1,21 @@
+{
+  "embedder": "bedrock",
+  "model": "amazon.titan-embed-text-v2:0",
+  "dimensions": 256,
+  "documents": 30,
+  "queries": 25,
+  "date": "2026-11-23",
+  "semantic": {
+    "mrr": 1,
+    "recall@1": 1,
+    "recall@3": 1,
+    "recall@5": 1
+  },
+  "keywordBaseline": {
+    "mrr": 0.53,
+    "recall@1": 0.44,
+    "recall@3": 0.56,
+    "recall@5": 0.6
+  },
+  "semanticTop1Misses": []
+}

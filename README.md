@@ -134,7 +134,7 @@ sequenceDiagram
 
 ## Engineering highlights
 
-- **96.19% line test coverage, enforced in CI (80% minimum)** — 310 unit tests plus 19 Hurl integration test files covering every route, every conversion path, and both success and error cases
+- **97.96% line test coverage, enforced in CI (80% minimum)** — 608 unit tests plus 20 Hurl integration test files covering every route, every conversion path, and both success and error cases
 - **Everything as code** — every AWS resource is defined in Terraform, so the whole environment can be created, or destroyed to stop billing, with one command; CI/CD only ships images
 - **No long-lived credentials in CI** — GitHub Actions assumes a least-privilege IAM role through OIDC, limited to this repository's version tags
 - **Least-privilege IAM** — the running container can touch only its own S3 bucket and DynamoDB table, and only with the operations the code uses
@@ -155,6 +155,7 @@ sequenceDiagram
 | `GET` | `/v1/fragments/:id/info` | Get a fragment's metadata only (includes `viewCount` and `expiresAt`) |
 | `GET` | `/v1/fragments/:id/share` | Get a temporary public link to the fragment's data (`?expiresIn=<seconds>`, default 15 min, max 1 hour) |
 | `POST` | `/v1/fragments/:id/jobs` | Convert in the background: body `{"to": ".avif", "width": 800}`. Answers `202` with a `Location` to poll (see [Async conversions](#async-conversions)) |
+| `GET` | `/v1/search?q=...&k=5` | Semantic search over your text fragments (plain text, markdown, HTML), best match first, with a snippet (see [Semantic search](#semantic-search)) |
 | `GET` | `/v1/jobs/:jobId` | A job's status (`queued`, `running`, `succeeded`, `failed`), attempts, and a download link when done |
 | `PUT` | `/v1/fragments/:id` | Replace a fragment's data (its type is immutable) |
 | `DELETE` | `/v1/fragments/:id` | Delete a fragment |
@@ -162,6 +163,16 @@ sequenceDiagram
 Image fragments accept `?width=<pixels>` on reads (with or without an extension) to return a smaller copy, e.g. `/v1/fragments/:id.webp?width=200`.
 
 All `/v1/*` routes require authentication (HTTP Basic locally, or a Cognito bearer token in production).
+
+### Semantic search
+
+`GET /v1/search?q=<text>&k=<1-20>` finds a user's text fragments **by meaning**, not by shared words: "my pet cat stopped eating" finds a note about cat health that never uses those words.
+
+- **Indexing is a background job.** Creating or updating a text fragment queues an `embed` message on the same SQS queue the conversion jobs use. The worker splits the text into overlapping chunks of about 900 characters, embeds each with **Amazon Bedrock Titan Text Embeddings V2** (256 dimensions, normalised) and stores them in their own DynamoDB table. A message for an out-of-date version is skipped; deleting a fragment removes its chunks.
+- **No stored credentials.** Bedrock is called with the task's IAM role, allowed to invoke only that one model.
+- **Search is brute force, on purpose.** The API embeds the query, scores the user's chunks by dot product (the vectors are normalised, so that is cosine similarity), keeps the best chunk per fragment, and returns the top `k`. It only ever reads the caller's own chunks. That is fine up to a few thousand chunks per user. Beyond that you would use a real vector index (OpenSearch Serverless, pgvector), which costs money while idle and so conflicts with the apply-and-destroy workflow.
+- **Memory mode** answers `501`. Locally, docker compose uses a deterministic fake embedder so the plumbing runs with no AWS.
+- **Measured:** on a 30-document, 25-query evaluation Titan scored recall@1 of 1.00 against 0.44 for a keyword-overlap baseline. It is an easy benchmark, written by the author; read [`docs/search.md`](docs/search.md) before quoting it.
 
 ### Async conversions
 
@@ -215,6 +226,8 @@ infra/               Terraform: root config + 12 modules (network, alb, ecs, ecr
                      storage, auth, events (Lambda), cicd (GitHub OIDC role),
                      observability (dashboard, alarms), queue (SQS + dead-letter
                      queue), worker (second ECS service))
+src/search/          chunking, embeddings (Bedrock), vector maths, index and search
+eval/                search quality evaluation (corpus, labelled queries, results)
 perf/                k6 load tests (smoke + mixed-load staircase), see perf/README.md
 .github/workflows/   ci.yml (tests, lint, terraform validate) and cd.yml (deploy on tag)
 docs/                observability.md, perf/ (load-test results), UPGRADE_PLAN.md
@@ -308,6 +321,8 @@ npm run test:integration  # Hurl integration tests (requires the Docker Compose 
 | `FRAGMENTS_LOG_LEVEL` | Pino log level (`info` in production, `debug` for troubleshooting) |
 | `AWS_SQS_QUEUE_URL` | Enables async jobs: the SQS queue the API sends to and the worker reads from. Without it `POST .../jobs` answers `501` |
 | `AWS_DYNAMODB_JOBS_TABLE_NAME` | DynamoDB table holding job records |
+| `AWS_DYNAMODB_EMBEDDINGS_TABLE_NAME` | Enables search: DynamoDB table holding the search index. Without it `GET /v1/search` answers `501` |
+| `EMBEDDER` / `EMBEDDING_DIMENSIONS` | `fake` uses the local word-hashing embedder instead of Bedrock; vector size (default `256`) |
 | `AWS_SQS_ENDPOINT_URL` | Alternate SQS endpoint (MiniStack) for local runs |
 | `JOB_MAX_ATTEMPTS` / `JOB_LEASE_SECONDS` | Attempts before a job fails (default `3`, matches the queue's redrive count) and how long a worker may hold a job (default `110` s, just under the queue's 120 s visibility timeout) |
 | `MAX_IMAGE_PIXELS` | Largest image (width x height) that will be converted or resized (default 16,000,000). Larger images are refused with `422`; found by load testing, see `docs/perf/baseline.md` |

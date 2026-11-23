@@ -73,3 +73,8 @@ variable "cognito_client_id" {
   type    = string
   default = ""
 }
+
+variable "embeddings_table_name" {
+  description = "DynamoDB table for the search index"
+  type        = string
+}

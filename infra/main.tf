@@ -17,7 +17,9 @@ module "iam" {
   bucket_arn     = module.storage.bucket_arn
   table_arn      = module.storage.table_arn
   jobs_table_arn = module.storage.jobs_table_arn
-  queue_arn      = module.queue.queue_arn
+
+  embeddings_table_arn = module.storage.embeddings_table_arn
+  queue_arn            = module.queue.queue_arn
 }
 
 module "queue" {
@@ -54,43 +56,45 @@ module "auth" {
 module "ecs" {
   source = "./modules/ecs"
 
-  project_name        = var.project_name
-  aws_region          = var.aws_region
-  image               = "${module.ecr.repository_url}:latest"
-  container_port      = var.container_port
-  desired_count       = var.desired_count
-  execution_role_arn  = module.iam.task_execution_role_arn
-  task_role_arn       = module.iam.task_role_arn
-  subnet_ids          = module.network.subnet_ids
-  security_group_id   = module.network.ecs_security_group_id
-  target_group_arn    = module.alb.target_group_arn
-  s3_bucket_name      = module.storage.bucket_name
-  dynamodb_table_name = module.storage.table_name
-  jobs_table_name     = module.storage.jobs_table_name
-  sqs_queue_url       = module.queue.queue_url
-  api_url             = "http://${module.alb.dns_name}"
-  cognito_pool_id     = module.auth.user_pool_id
-  cognito_client_id   = module.auth.client_id
+  project_name          = var.project_name
+  aws_region            = var.aws_region
+  image                 = "${module.ecr.repository_url}:latest"
+  container_port        = var.container_port
+  desired_count         = var.desired_count
+  execution_role_arn    = module.iam.task_execution_role_arn
+  task_role_arn         = module.iam.task_role_arn
+  subnet_ids            = module.network.subnet_ids
+  security_group_id     = module.network.ecs_security_group_id
+  target_group_arn      = module.alb.target_group_arn
+  s3_bucket_name        = module.storage.bucket_name
+  dynamodb_table_name   = module.storage.table_name
+  jobs_table_name       = module.storage.jobs_table_name
+  sqs_queue_url         = module.queue.queue_url
+  embeddings_table_name = module.storage.embeddings_table_name
+  api_url               = "http://${module.alb.dns_name}"
+  cognito_pool_id       = module.auth.user_pool_id
+  cognito_client_id     = module.auth.client_id
 }
 
 module "worker" {
   source = "./modules/worker"
 
-  project_name        = var.project_name
-  aws_region          = var.aws_region
-  cluster_id          = module.ecs.cluster_id
-  image               = "${module.ecr.repository_url}:latest"
-  desired_count       = var.worker_desired_count
-  cpu                 = var.worker_cpu
-  memory              = var.worker_memory
-  execution_role_arn  = module.iam.task_execution_role_arn
-  task_role_arn       = module.iam.worker_role_arn
-  subnet_ids          = module.network.subnet_ids
-  security_group_id   = module.network.ecs_security_group_id
-  s3_bucket_name      = module.storage.bucket_name
-  dynamodb_table_name = module.storage.table_name
-  jobs_table_name     = module.storage.jobs_table_name
-  queue_url           = module.queue.queue_url
+  project_name          = var.project_name
+  aws_region            = var.aws_region
+  cluster_id            = module.ecs.cluster_id
+  image                 = "${module.ecr.repository_url}:latest"
+  desired_count         = var.worker_desired_count
+  cpu                   = var.worker_cpu
+  memory                = var.worker_memory
+  execution_role_arn    = module.iam.task_execution_role_arn
+  task_role_arn         = module.iam.worker_role_arn
+  subnet_ids            = module.network.subnet_ids
+  security_group_id     = module.network.ecs_security_group_id
+  s3_bucket_name        = module.storage.bucket_name
+  dynamodb_table_name   = module.storage.table_name
+  jobs_table_name       = module.storage.jobs_table_name
+  queue_url             = module.queue.queue_url
+  embeddings_table_name = module.storage.embeddings_table_name
 }
 
 module "events" {
