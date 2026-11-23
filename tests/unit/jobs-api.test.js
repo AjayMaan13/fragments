@@ -259,3 +259,129 @@ describe('GET /v1/jobs/:jobId', () => {
     expect(res.body.job.error).toContain('worker did not finish');
   });
 });
+
+// ---------------------------------------------------------------------------
+// The jobs API's promises beyond status codes: limits, messages, Location.
+// ---------------------------------------------------------------------------
+
+describe('jobs API contracts', () => {
+  const { extToType } = require('../../src/convert');
+  const errorOf = (res) => res.body.error;
+
+  describe('POST validation messages', () => {
+    test('an unknown target lists every extension that is allowed', async () => {
+      const fragment = await createFragment('text/markdown', '# hi');
+      const res = await postJob(fragment.id, { to: '.exe' });
+      expect(res.statusCode).toBe(400);
+      expect(errorOf(res)).toEqual({
+        code: 400,
+        message: `"to" must be one of: ${Object.keys(extToType).join(', ')}`,
+      });
+    });
+
+    test('1 and 4096 are the smallest and largest widths', async () => {
+      const png = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#fff' } })
+        .png()
+        .toBuffer();
+      const fragment = await createFragment('image/png', png);
+      expect((await postJob(fragment.id, { to: '.webp', width: 1 })).statusCode).toBe(202);
+      expect((await postJob(fragment.id, { to: '.webp', width: 4096 })).statusCode).toBe(202);
+    });
+
+    test.each([[0], [4097], [1.5], [-3], ['10'], [null], [true]])(
+      'width %p is refused with the range in the message',
+      async (width) => {
+        const fragment = await createFragment('text/markdown', '# hi');
+        const res = await postJob(fragment.id, { to: '.html', width });
+        expect(res.statusCode).toBe(400);
+        expect(errorOf(res)).toEqual({
+          code: 400,
+          message: 'width must be a whole number of pixels (1-4096)',
+        });
+      }
+    );
+
+    test('the other refusals say what is wrong', async () => {
+      const text = await createFragment('text/plain', 'plain');
+      expect(errorOf(await postJob('nope', { to: '.pdf' }))).toEqual({
+        code: 404,
+        message: 'Fragment not found',
+      });
+      expect(errorOf(await postJob(text.id, { to: '.AVIF' }))).toEqual({
+        code: 415,
+        message: 'Cannot convert text/plain to .avif', // the extension is lower-cased
+      });
+      expect(errorOf(await postJob(text.id, { to: '.pdf', width: 10 }))).toEqual({
+        code: 400,
+        message: 'width only applies to images',
+      });
+      expect(errorOf(await postJob(text.id, { to: '.txt' }))).toEqual({
+        code: 400,
+        message: 'Nothing to convert: same type as the fragment, no width',
+      });
+    });
+
+    test('a failure to queue says to try again shortly', async () => {
+      queue.sendJob.mockRejectedValueOnce(new Error('SQS down'));
+      const fragment = await createFragment('text/markdown', '# hi');
+      expect(errorOf(await postJob(fragment.id, { to: '.html' }))).toEqual({
+        code: 503,
+        message: 'Unable to queue job, try again shortly',
+      });
+    });
+
+    test('a failure to record the job is a 500 and nothing is queued', async () => {
+      jest.spyOn(Job, 'create').mockRejectedValueOnce(new Error('db down'));
+      const fragment = await createFragment('text/markdown', '# hi');
+      const res = await postJob(fragment.id, { to: '.html' });
+      expect(res.statusCode).toBe(500);
+      expect(errorOf(res)).toEqual({ code: 500, message: 'Unable to create job' });
+      expect(queue.sendJob).not.toHaveBeenCalled();
+      Job.create.mockRestore();
+    });
+  });
+
+  describe('Location', () => {
+    afterEach(() => delete process.env.API_URL);
+
+    test('is built from API_URL when set', async () => {
+      process.env.API_URL = 'http://api.example.test';
+      const fragment = await createFragment('text/markdown', '# hi');
+      const res = await postJob(fragment.id, { to: '.html' });
+      expect(res.headers.location).toBe(`http://api.example.test/v1/jobs/${res.body.job.id}`);
+    });
+
+    test('falls back to the host the request came to', async () => {
+      const fragment = await createFragment('text/markdown', '# hi');
+      const res = await postJob(fragment.id, { to: '.html' });
+      expect(res.headers.location).toMatch(
+        new RegExp(`^http://127\\.0\\.0\\.1:\\d+/v1/jobs/${res.body.job.id}$`)
+      );
+    });
+  });
+
+  describe('GET /v1/jobs/:jobId messages', () => {
+    test('an unknown job says so', async () => {
+      const res = await getJob('no-such-job');
+      expect(res.statusCode).toBe(404);
+      expect(errorOf(res)).toEqual({ code: 404, message: 'Job not found' });
+    });
+
+    test('a read failure is a 500 with a message', async () => {
+      jest.spyOn(Job, 'byId').mockRejectedValueOnce(new Error('db down'));
+      const res = await getJob('anything');
+      expect(res.statusCode).toBe(500);
+      expect(errorOf(res)).toEqual({ code: 500, message: 'Unable to read job' });
+      Job.byId.mockRestore();
+    });
+  });
+
+  test('a missing queue is 501 with the reason', async () => {
+    queue.isEnabled.mockReturnValue(false);
+    const fragment = await createFragment('text/markdown', '# hi');
+    expect(errorOf(await postJob(fragment.id, { to: '.html' }))).toEqual({
+      code: 501,
+      message: 'Jobs need an SQS queue (not available in memory mode)',
+    });
+  });
+});

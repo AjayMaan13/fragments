@@ -132,6 +132,54 @@ describe('queue', () => {
 
   test('in AWS the client is configured with just the region (the task role supplies credentials)', async () => {
     await queue.remove('a');
-    expect(mockClientConfigs[0]).toEqual({ region: 'us-east-2' });
+    expect(mockClientConfigs[0]).toStrictEqual({ region: 'us-east-2' });
+    expect(Object.keys(mockClientConfigs[0])).toEqual(['region']);
+  });
+});
+
+describe('queue details', () => {
+  let queue;
+  beforeEach(() => {
+    jest.resetModules();
+    mockSend.mockReset();
+    mockClientConfigs.length = 0;
+    process.env.AWS_SQS_QUEUE_URL = QUEUE_URL;
+    process.env.AWS_REGION = 'us-east-2';
+    queue = require('../../src/queue');
+  });
+  afterEach(() => {
+    delete process.env.AWS_SQS_QUEUE_URL;
+    delete process.env.AWS_SQS_ENDPOINT_URL;
+    delete process.env.AWS_ACCESS_KEY_ID;
+    delete process.env.AWS_SECRET_ACCESS_KEY;
+  });
+
+  test('receive asks SQS for the request id attribute, so it can come back', async () => {
+    mockSend.mockResolvedValueOnce({});
+    await queue.receive();
+    expect(mockSend.mock.calls[0][0].input.MessageAttributeNames).toEqual(['requestId']);
+  });
+
+  test('a message that has attributes but no request id is read without error', async () => {
+    mockSend.mockResolvedValueOnce({
+      Messages: [{ MessageId: 'm', Body: '{}', ReceiptHandle: 'h', MessageAttributes: {} }],
+    });
+    const [message] = await queue.receive();
+    expect(message.requestId).toBeUndefined();
+  });
+
+  test('credentials need both halves; an access key alone is ignored', async () => {
+    process.env.AWS_ACCESS_KEY_ID = 'only-half';
+    await queue.remove('h');
+    expect(mockClientConfigs[0]).not.toHaveProperty('credentials');
+  });
+
+  test('a custom endpoint is used without credentials when none are set, and not at all when unset', async () => {
+    process.env.AWS_SQS_ENDPOINT_URL = 'http://localhost:4566';
+    await queue.remove('h');
+    expect(mockClientConfigs[0]).toEqual({
+      region: 'us-east-2',
+      endpoint: 'http://localhost:4566',
+    });
   });
 });

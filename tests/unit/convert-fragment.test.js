@@ -208,3 +208,92 @@ describe('image safety limits', () => {
     expect(results).toHaveLength(3);
   });
 });
+
+describe('more image and limit details', () => {
+  const zlib = require('zlib');
+  afterEach(() => {
+    delete process.env.MAX_IMAGE_PIXELS;
+    delete process.env.MAX_CONCURRENT_IMAGE_CONVERSIONS;
+  });
+
+  // A 66-byte PNG whose header claims 30000x30000 pixels: no real pixel data
+  // exists, but the size check only reads the header
+  const hugeHeaderPng = () => {
+    const chunk = (type, data) => {
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(data.length);
+      const body = Buffer.concat([Buffer.from(type), data]);
+      const crc = Buffer.alloc(4);
+      crc.writeUInt32BE(zlib.crc32(body) >>> 0);
+      return Buffer.concat([len, body, crc]);
+    };
+    const header = Buffer.alloc(13);
+    header.writeUInt32BE(30000, 0);
+    header.writeUInt32BE(30000, 4);
+    header[8] = 8;
+    header[9] = 2;
+    return Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      chunk('IHDR', header),
+      chunk('IDAT', zlib.deflateSync(Buffer.alloc(1))),
+      chunk('IEND', Buffer.alloc(0)),
+    ]);
+  };
+
+  test("an image bigger than even sharp will look at gets our friendly 422, not sharp's own error", async () => {
+    const err = await convertFragment(hugeHeaderPng(), 'image/png', 'image/webp').catch((e) => e);
+    expect(err).toBeInstanceOf(ConversionLimitError);
+    expect(err.status).toBe(422);
+    expect(err.message).toContain('30000x30000');
+    expect(err.message).toContain('16 megapixels');
+  });
+
+  test('the error carries its own name', async () => {
+    const err = await convertFragment(hugeHeaderPng(), 'image/png', 'image/webp').catch((e) => e);
+    expect(err.name).toBe('ConversionLimitError');
+  });
+
+  test('by default two image conversions may run at once; the third is turned away', async () => {
+    const png = await makePng(300, 300);
+    const results = await Promise.allSettled(
+      [1, 2, 3].map(() => convertFragment(png, 'image/png', 'image/webp'))
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    const [refused] = results.filter((r) => r.status === 'rejected');
+    expect(refused.reason.status).toBe(503);
+  });
+
+  test('every image type is a real conversion target, with the right format', async () => {
+    const png = await makePng(10, 10);
+    for (const [type, format] of [
+      ['image/png', 'png'],
+      ['image/jpeg', 'jpeg'],
+      ['image/webp', 'webp'],
+      ['image/avif', 'heif'],
+      ['image/gif', 'gif'],
+    ]) {
+      const out = await convertFragment(png, 'image/png', type);
+      expect((await sharp(out).metadata()).format).toBe(format);
+    }
+  });
+
+  test('every extension maps to its own type', () => {
+    const { extToType: map } = require('../../src/convert');
+    expect(map).toMatchObject({
+      '.txt': 'text/plain',
+      '.md': 'text/markdown',
+      '.html': 'text/html',
+      '.csv': 'text/csv',
+      '.json': 'application/json',
+      '.yaml': 'application/yaml',
+      '.yml': 'application/yaml',
+      '.xml': 'application/xml',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
+      '.avif': 'image/avif',
+      '.gif': 'image/gif',
+    });
+  });
+});

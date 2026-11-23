@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Mutation testing: change the code in small ways (flip a comparison, drop a condition) and check that a test fails. A mutant no test notices 'survives'. Run: npm run mutation",
+  "testRunner": "jest",
+  "jest": {
+    "configFile": "jest.config.js"
+  },
+  "coverageAnalysis": "perTest",
+  "mutate": [
+    "src/convert.js",
+    "src/model/fragment.js",
+    "src/model/job.js",
+    "src/routes/api/*.js",
+    "src/worker-core.js",
+    "src/queue.js"
+  ],
+  "incremental": true,
+  "incrementalFile": "reports/stryker-incremental.json",
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/mutation.html"
+  },
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "tempDirName": ".stryker-tmp",
+  "concurrency": 4,
+  "timeoutMS": 15000,
+  "thresholds": {
+    "high": 95,
+    "low": 90,
+    "break": 90
+  },
+  "plugins": ["@stryker-mutator/jest-runner", "./stryker-plugins/ignore-logger.mjs"],
+  "ignorers": ["logger-calls"]
+}
